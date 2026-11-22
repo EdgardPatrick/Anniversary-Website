@@ -77,15 +77,42 @@ export function GiftBox({ layer }: { layer: "back" | "front" }) {
         {!back && walls
           .filter((wall) => wall.name.startsWith("front"))
           .map((wall) => (
-            <g key={wall.name} data-part={`wall-${wall.name}`} style={{ transformOrigin: hingeOrigin(wall) }}>
-              <polygon points={polygon(...wall.points)} fill={wallFill[wall.name]} />
-              <polygon data-ribbon="" points={wallRibbon(wall) ?? ""} fill={wall.name === "front-left" ? "url(#gift-silk)" : "url(#gift-silk-shade)"} />
-              {/* Its inner face, shown once it has tipped past edge-on */}
-              <polygon data-part={`wall-${wall.name}-inside`} points={polygon(...wall.points)} fill="url(#gift-inside)" opacity="0" />
+            <g key={wall.name} data-part={`wall-${wall.name}`}>
+              <polygon
+                data-wall-face=""
+                points={polygon(...wall.points)}
+                fill={wallFill[wall.name]}
+                stroke="#4264ae"
+                strokeWidth="1.25"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+              <polygon
+                data-ribbon=""
+                points={wallRibbon(wall) ?? ""}
+                fill={wall.name === "front-left" ? "url(#gift-silk)" : "url(#gift-silk-shade)"}
+              />
+              <polygon
+                data-wall-inside=""
+                points={polygon(...wall.points)}
+                fill="url(#gift-inside)"
+                opacity="0"
+              />
             </g>
           ))}
         {/* The box's front edge catches the light */}
-        {!back && <line x1="160" y1="208" x2="160" y2="300" stroke="#9cbcff" strokeOpacity=".45" strokeWidth="1.2" />}
+        {!back && (
+          <line
+            data-part="front-seam"
+            x1="160"
+            y1="208"
+            x2="160"
+            y2="300"
+            stroke="#9cbcff"
+            strokeOpacity=".45"
+            strokeWidth="1.2"
+          />
+        )}
 
         {!back && <g data-part="lid" style={origin(lid.center[0], lid.center[1])}>
           <polygon points={lid.leftSkirt} fill="url(#gift-lit)" />

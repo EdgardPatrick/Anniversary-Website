@@ -4,7 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { GiftBox } from "@/components/GiftBox";
 import { anniversary } from "@/data/anniversary";
-import { fallKeyframes, floorCenter, insideKeyframes, timeline, walls, type Point } from "@/lib/gift-box";
+import {
+  animateFrontWall,
+  fallKeyframes,
+  floorCenter,
+  timeline,
+  walls,
+  type Point,
+} from "@/lib/gift-box";
 import { BEAR_HEIGHT, framing, type ScreenPoint } from "@/lib/bear-scene";
 import type { BearStageHandle } from "@/components/BearStage";
 import { drawBearStill, type StillShape } from "@/lib/bear-still";
@@ -49,7 +56,7 @@ export function GiftReveal() {
   const cueRef = useRef<HTMLParagraphElement>(null);
   const sceneRef = useRef<BearStageHandle | null>(null);
   const preparing = useRef<Promise<BearStageHandle | null> | null>(null);
-  const ready = useRef<(handle: BearStageHandle | null) => void>(() => {});
+  const ready = useRef<(handle: BearStageHandle | null) => void>(() => { });
   const renderer = useRef<Renderer>("pending");
   const stillShape = useRef<StillShape | null>(null);
   const timers = useRef<number[]>([]);
@@ -379,10 +386,28 @@ export function GiftReveal() {
       );
     });
     later(timeline.walls, () => {
+      const duration = 760;
+
+      part("front-seam")?.animate(
+        [{ opacity: 1 }, { opacity: 0 }],
+        { duration: 90, easing: "ease-out", ...keep },
+      );
+
       for (const wall of walls) {
-        const fall = { duration: 760, delay: wall.name.startsWith("back") ? 70 : 0, easing: "linear", ...keep };
-        part(`wall-${wall.name}`)?.animate(fallKeyframes(wall), fall);
-        part(`wall-${wall.name}-inside`)?.animate(insideKeyframes(wall), fall);
+        const name = `wall-${wall.name}`;
+
+        if (wall.name.startsWith("front")) {
+          const group = gift.querySelector<SVGGElement>(`[data-part="${name}"]`);
+          if (group) animateFrontWall(group, wall, duration);
+          continue;
+        }
+
+        part(name)?.animate(fallKeyframes(wall), {
+          duration,
+          delay: 70,
+          easing: "linear",
+          ...keep,
+        });
       }
     });
     // The opened box lies flat for a moment, then fades away under the forming bear

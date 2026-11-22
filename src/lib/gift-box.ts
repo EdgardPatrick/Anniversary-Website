@@ -130,6 +130,44 @@ const css = ({ a, b, c, d }: { a: number; b: number; c: number; d: number }) =>
 // A wall tipping over: it speeds up as it falls, lands flat, bounces once and settles
 const fallAngle = (t: number) => (t < 0.78 ? (Math.PI / 2) * (t / 0.78) ** 2 : Math.PI / 2 - 0.16 * Math.sin((Math.PI * (t - 0.78)) / 0.22));
 
+export function animateFrontWall(group: SVGGElement, wall: Wall, duration: number) {
+  const face = group.querySelector<SVGPolygonElement>("[data-wall-face]");
+  const inside = group.querySelector<SVGPolygonElement>("[data-wall-inside]");
+  if (!face || !inside) return;
+
+  const [left, right] = wall.hinge;
+  const edgeX = right[0] - left[0];
+  const edgeY = right[1] - left[1];
+  const started = performance.now();
+
+  function draw(now: number) {
+    if (!group.isConnected || !face || !inside) return;
+
+    const progress = Math.min(1, (now - started) / duration);
+    const angle = fallAngle(progress);
+    const dx = HEIGHT[0] * Math.cos(angle) + wall.outward[0] * Math.sin(angle);
+    const dy = HEIGHT[1] * Math.cos(angle) + wall.outward[1] * Math.sin(angle);
+
+    const points = polygon(
+      left,
+      right,
+      [right[0] + dx, right[1] + dy],
+      [left[0] + dx, left[1] + dy],
+    );
+
+    face.setAttribute("points", points);
+    inside.setAttribute("points", points);
+
+    // Both front hinges run left to right. Positive area exposes the inside.
+    const area = edgeX * dy - edgeY * dx;
+    inside.setAttribute("opacity", area > 0 ? "1" : "0");
+
+    if (progress < 1) requestAnimationFrame(draw);
+  }
+
+  draw(started);
+}
+
 export function fallKeyframes(wall: Wall, steps = 16): Keyframe[] {
   const edgeVector = edge(wall.hinge[0], wall.hinge[1]);
   return Array.from({ length: steps + 1 }, (_, i) => {
