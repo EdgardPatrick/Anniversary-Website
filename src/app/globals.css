@@ -1,0 +1,276 @@
+@import "tailwindcss";
+
+/* One theme: a near-black page (so the glowing bear reads like light), pale blue ink, a bright blue accent.
+   Same token names as the portfolio, so the components read the same way. */
+:root {
+  color-scheme: dark;
+  --background: #050608;
+  --background-glow: #0b1426;
+  --foreground: #e8efff;
+  --surface: #0c111c;
+  --border: #1a2234;
+  --muted: #a8bbe6; /* 10:1 on the background */
+  --accent: #7ea8ff;
+  --accent-foreground: #050608;
+  --border-strong: #3d4f78;
+  --radius: 0.5rem;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Expose the tokens to Tailwind as utilities: bg-background, text-muted, rounded-ui, ... */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border-strong: var(--border-strong);
+  --radius-ui: var(--radius);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-serif: Georgia, "Times New Roman", serif;
+}
+
+html {
+  scroll-behavior: smooth;
+  /* The page still scrolls; only the bar is hidden */
+  scrollbar-width: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Everything clickable shows a pointer */
+button:not(:disabled):not([aria-disabled="true"]),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+/* ── Reduce Motion ──────────────────────────────────────────
+   <html data-motion="reduce"> is set by lib/motion.ts. CSS animations and transitions finish
+   instantly; the opening itself checks the same store and skips straight to the still bear. */
+html[data-motion="reduce"],
+html[data-motion="reduce"] *,
+html[data-motion="reduce"] *::before,
+html[data-motion="reduce"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  animation-delay: 0s !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+/* If JavaScript never ran (so there's no data-motion yet), fall back to the device setting */
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion]) *,
+  html:not([data-motion]) *::before,
+  html:not([data-motion]) *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Hero: the gift on a dark field, with the faintest blue haze behind it ── */
+.hero {
+  background: radial-gradient(ellipse 60% 50% at 50% 48%, var(--background-glow), var(--background) 70%);
+}
+
+.gift {
+  touch-action: manipulation; /* no double-tap zoom delaying the first tap */
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+.gift-svg {
+  filter: drop-shadow(0 18px 28px rgb(0 0 0 / 0.6));
+}
+
+/* Keyboard focus: a soft blue ring around the box, never shown for mouse or touch */
+.gift:focus-visible {
+  outline: 2px solid #cfe0ff;
+  outline-offset: 10px;
+}
+
+/* A slow breath while the gift waits, so it reads as something to touch */
+html[data-motion="full"]:not([data-reveal]) .gift-svg {
+  animation: gift-breathe 3.6s ease-in-out infinite;
+}
+
+@keyframes gift-breathe {
+  50% {
+    translate: 0 -4px;
+  }
+}
+
+.gift:hover .gift-svg,
+.gift:focus-visible .gift-svg {
+  filter: drop-shadow(0 22px 30px rgb(0 0 0 / 0.65)) drop-shadow(0 0 22px rgb(126 168 255 / 0.25));
+}
+
+html[data-reveal] .gift {
+  cursor: default;
+}
+
+/* Once the words appear, the opened box steps aside so they sit clear under the bear */
+html[data-reveal="open"] .gift {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 900ms ease;
+}
+
+.bear-canvas {
+  opacity: 0;
+}
+
+.bear-canvas[data-live="true"] {
+  opacity: 1;
+}
+
+/* Confetti pieces (lib/confetti.ts) */
+.confetti {
+  position: absolute;
+  margin: -4px 0 0 -3px;
+  will-change: transform, opacity;
+}
+
+.confetti-strip {
+  width: 6px;
+  height: 14px;
+  border-radius: 1px;
+}
+
+.confetti-square {
+  width: 9px;
+  height: 9px;
+  border-radius: 1px;
+}
+
+.confetti-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+/* The second line of the greeting, flattened like the portfolio's surname */
+.title-accent {
+  scale: 1 0.9;
+  transform-origin: center top;
+}
+
+/* The greeting rises in line by line once it appears */
+html:not([data-motion="reduce"]) .hero-in {
+  animation: hero-in 1000ms var(--ease-out) both;
+  animation-delay: calc(80ms + var(--i, 0) * 110ms);
+}
+
+@keyframes hero-in {
+  from {
+    opacity: 0;
+    translate: 0 0.5em;
+    filter: blur(6px);
+  }
+}
+
+/* ── Scroll reveals (where the browser supports view timelines) ── */
+@supports (animation-timeline: view()) {
+  html:not([data-motion="reduce"]) .reveal {
+    animation: rise linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 60%;
+  }
+
+  html:not([data-motion="reduce"]) .rule-draw {
+    transform-origin: left;
+    animation: draw linear both;
+    animation-timeline: view();
+    animation-range: entry 10% entry 70%;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    translate: 0 1.5rem;
+  }
+}
+
+@keyframes draw {
+  from {
+    scale: 0 1;
+  }
+}
+
+/* ── Buttons: a small arrow that slides, a lift, a sheen ───── */
+.btn {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  transition:
+    transform 260ms var(--ease-out),
+    box-shadow 260ms var(--ease-out),
+    border-color 200ms ease,
+    background-color 200ms ease,
+    color 200ms ease;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+}
+
+.btn:active {
+  transform: translateY(0);
+  transition-duration: 80ms;
+}
+
+.btn-primary:hover {
+  box-shadow: 0 10px 28px -10px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+/* A diagonal sheen that sweeps across the primary button on hover */
+.btn-primary::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.3) 50%, transparent 65%);
+  translate: -110% 0;
+  transition: translate 0ms;
+}
+
+.btn-primary:hover::before {
+  translate: 110% 0;
+  transition: translate 700ms var(--ease-out);
+}
+
+.btn-arrow {
+  transition: translate 260ms var(--ease-out);
+}
+
+.btn:hover .btn-arrow[data-dir="down"],
+a:focus-visible .btn-arrow[data-dir="down"] {
+  translate: 0 3px;
+}
+
+.group:hover .btn-arrow[data-dir="up"] {
+  translate: 0 -3px;
+}
+
+/* ── Footer wordmark: huge, fading into the floor ─────────── */
+.wordmark {
+  color: transparent;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--accent) 38%, transparent), transparent 85%);
+  background-clip: text;
+}
