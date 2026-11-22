@@ -1,10 +1,11 @@
 // The scroll story after the bear has formed. Progress runs 0 → 1 across the hero's scroll track,
 // and everything on screen is a pure function of it, so scrolling back replays each beat in reverse.
 //
-// 0 ── the greeting leaves ── I ── the bear turns as it becomes the heart ── U ── Forever ──── 1
+// 0 ── greeting leaves ── the bear turns right, becoming the heart as it turns ── I ♥ U · Forever ──
+//   the heart flips over, becoming the bouquet as it flips ──── 1
 
 /** Height of the hero's scroll track, in screen heights */
-export const TRACK_SCREENS = 4;
+export const TRACK_SCREENS = 7;
 
 export interface Beat {
   /** -Infinity: already there when the scroll starts (it arrived during the opening) */
@@ -13,23 +14,29 @@ export interface Beat {
   exit: number;
 }
 
-export const beats = {
-  greeting: { enter: -Infinity, exit: 0.12 },
-  i: { enter: 0.14, exit: Infinity },
-  u: { enter: 0.48, exit: Infinity },
-  forever: { enter: 0.58, exit: Infinity },
-} satisfies Record<string, Beat>;
+/** One full turn to the right */
+export const TURN = { from: 0.07, to: 0.38 };
+/** The change runs through the whole turn: halfway done with its back to us, finished facing front */
+export const MORPH = TURN;
+/** One full vertical flip of the heart */
+export const FLIP = { from: 0.6, to: 0.88 };
+/** The change runs through the whole flip: halfway done upside down, finished upright */
+export const BLOOM = FLIP;
 
-/** The bear's particles become the heart across this span */
-export const MORPH = { from: 0.16, to: 0.46 };
-/** How far the bear turns away as the scroll starts, in radians; it is face-on again as the heart */
-const TURN_ANGLE = 0.7;
+export const beats = {
+  greeting: { enter: -Infinity, exit: 0.07 },
+  // "I ♥ U · Forever" appears all at once, as soon as the heart has formed
+  i: { enter: TURN.to, exit: FLIP.from },
+  u: { enter: TURN.to, exit: FLIP.from },
+  forever: { enter: TURN.to, exit: FLIP.from },
+} satisfies Record<string, Beat>;
 
 /** Share of the track a line spends rippling in, and again rippling out */
 const RAMP = 0.05;
 
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
 const smooth = (t: number) => t * t * (3 - 2 * t);
+const span = (progress: number, { from, to }: { from: number; to: number }) => smooth(clamp01((progress - from) / (to - from)));
 
 export interface LineState {
   /** 0 hidden → 1 fully shown */
@@ -51,17 +58,15 @@ export function lineState(progress: number, { enter, exit }: Beat, arrival = 1):
   return { opacity: smooth(clamp01(shown / 0.55)), distort: 1 - smooth(shown) };
 }
 
-/** The bear's turn, in radians: out to one side with the first scroll, back to face-on as the heart forms */
-export function turnAt(progress: number) {
-  return TURN_ANGLE * Math.sin(Math.PI * clamp01(progress / MORPH.to));
-}
-
-export function morphAt(progress: number) {
-  return smooth(clamp01((progress - MORPH.from) / (MORPH.to - MORPH.from)));
-}
+/** The bear's turn to the right, in radians: one full circle */
+export const turnAt = (progress: number) => Math.PI * 2 * span(progress, TURN);
+/** The heart's vertical flip, in radians: one full circle */
+export const flipAt = (progress: number) => Math.PI * 2 * span(progress, FLIP);
+export const morphAt = (progress: number) => span(progress, MORPH);
+export const bloomAt = (progress: number) => span(progress, BLOOM);
 
 /** Scroll position → progress along the track */
 export function trackProgress(top: number, height: number, viewport: number) {
-  const span = height - viewport;
-  return span > 0 ? clamp01(-top / span) : 0;
+  const length = height - viewport;
+  return length > 0 ? clamp01(-top / length) : 0;
 }

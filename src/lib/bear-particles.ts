@@ -11,13 +11,17 @@
 //    particles swirl around its edge and swell on every heartbeat.
 // 3. The heart. As the visitor scrolls, each particle's home slides from the bear to the big heart,
 //    at its own moment, with a swirl along the way.
-// The pointer pushes and drags nearby particles at every stage; a tap sends out a ring.
+// 4. The bouquet. Scrolling on, each home slides again, to its place in the bouquet, and the
+//    particle takes on that place's color.
+// The pointer pushes, drags and lights up nearby particles at every stage; a tap sends out a ring.
 
 import {
+  AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
   DataTexture,
   FloatType,
+  Group,
   HalfFloatType,
   Points,
   RGBAFormat,
@@ -27,6 +31,7 @@ import {
 } from "three";
 import { GPUComputationRenderer } from "three/addons/misc/GPUComputationRenderer.js";
 import { seededRandom, type BearCloud, type HeartCloud } from "@/lib/bear-points";
+import type { BouquetCloud } from "@/lib/bouquet-points";
 
 const GRAVITY = 9;
 
@@ -35,22 +40,29 @@ const homeChunk = /* glsl */ `
   uniform sampler2D tBear;   // xyz: place on the bear, w: how near the bear's outline it sits (0 → 1)
   uniform sampler2D tHeart;  // xyz: place on the final heart (2 wide, centered), w: nearness to its outline
   uniform sampler2D tInfo;   // x: launch time, y: seed, z: 1 for the bear's heart, w: apex share
-  uniform sampler2D tLaunch; // xz: sideways throw, w: when it starts turning into the heart
+  uniform sampler2D tLaunch; // xz: sideways throw, y: 1 for paper confetti, w: when it starts each change
+  uniform sampler2D tBouquet; // xyz: place in the bouquet (about 2 across, centered), w: nearness to its outline
   uniform vec3 uHeartCenter; // the bear's heart, which beats
-  uniform float uMorph;
+  uniform float uMorph;      // bear → heart
+  uniform float uBloom;      // heart → bouquet
   uniform float uHeartScale;
+  uniform float uBouquetScale;
+  uniform vec3 uBouquetOffset;
   uniform float uBeat;
 
-  float morphOf(vec2 uv) {
+  float stagger(vec2 uv, float amount) {
     float start = texture2D(tLaunch, uv).w;
-    return smoothstep(start, start + 0.5, uMorph);
+    return smoothstep(start, start + 0.5, amount);
   }
+  float morphOf(vec2 uv) { return stagger(uv, uMorph); }
+  float bloomOf(vec2 uv) { return stagger(uv, uBloom); }
 
-  vec3 homeOf(vec2 uv, vec4 info, float m) {
+  vec3 homeOf(vec2 uv, vec4 info, float m, float b) {
     vec3 bear = texture2D(tBear, uv).xyz;
     bear = mix(bear, uHeartCenter + (bear - uHeartCenter) * (1.0 + 0.1 * uBeat), info.z);
-    vec3 heart = texture2D(tHeart, uv).xyz * uHeartScale * (1.0 + 0.08 * uBeat);
-    return mix(bear, heart, m);
+    vec3 heart = texture2D(tHeart, uv).xyz * uHeartScale * (1.0 + 0.08 * uBeat * (1.0 - b));
+    vec3 bouquet = uBouquetOffset + texture2D(tBouquet, uv).xyz * uBouquetScale;
+    return mix(mix(bear, heart, m), bouquet, b);
   }
 `;
 
@@ -113,13 +125,15 @@ const velocityShader = /* glsl */ `
       return;
     }
     float m = morphOf(uv);
-    vec3 home = homeOf(uv, info, m);
+    float b = bloomOf(uv);
+    vec3 home = homeOf(uv, info, m, b);
 
     float caught = smoothstep(apexTime * 0.8, apexTime + 1.5, age);
     float seed = info.y;
     // Particles along the outline move the most, so the silhouette shimmers and frays like Emotion's letter
     // ...scaled to the heart's size once it is the heart, so a small (phone) heart keeps its shape
     float edge = mix(texture2D(tBear, uv).w, texture2D(tHeart, uv).w * 0.6 * min(1.0, uHeartScale / 1.25), m);
+    edge = mix(edge, texture2D(tBouquet, uv).w * 0.4, b);
     home += vec3(
       sin(uTime * (1.1 + seed) + seed * 31.0),
       cos(uTime * (0.9 + seed * 0.7) + seed * 17.0),
@@ -139,13 +153,13 @@ const velocityShader = /* glsl */ `
     vec3 bearHome = texture2D(tBear, uv).xyz;
     vec3 heartHome = texture2D(tHeart, uv).xyz;
     float rim = mix(length((bearHome - uHeartCenter).xy) / 0.45, length(heartHome.xy), m);
-    float heartness = max(info.z, m);
+    float heartness = max(info.z, m) * (1.0 - b);
     float drift = caught * (0.12 + heartness * smoothstep(0.55, 1.0, rim) * mix(1.1, 0.5, m) + edge * 1.2);
     vec3 r = pos - mix(uHeartCenter, vec3(0.0), m);
     vec3 around = normalize(vec3(-r.y, r.x, 0.0) + 0.0001);
     acc += (flow(pos * 2.2, uTime * 0.7) * 0.7 + around * 0.6) * drift;
     // Swirl in transit between bear and heart
-    acc += (flow(pos * 1.4, uTime * 1.3) * 2.2 + around * 1.6) * sin(3.14159 * m);
+    acc += (flow(pos * 1.4, uTime * 1.3) * 2.2 + around * 1.6) * (sin(3.14159 * m) + sin(3.14159 * b));
 
     float stiffness = mix(0.0, 44.0, caught * caught) * (1.0 - 0.5 * heartness * smoothstep(0.6, 1.0, rim)) * (1.0 - 0.55 * edge);
     acc += (home - pos) * stiffness;
@@ -154,15 +168,17 @@ const velocityShader = /* glsl */ `
     vec3 off = offRay(pos, uRayOrigin, uRayDir);
     float d = length(off);
     float radius = 0.5 * (1.0 + 0.5 * uPress);
-    float reach = uPointerStrength * pow(max(0.0, 1.0 - d / radius), 2.0);
+    // Only particles that have landed answer the pointer; the rising stream flies straight
+    float reach = uPointerStrength * caught * pow(max(0.0, 1.0 - d / radius), 2.0);
     if (reach > 0.0) {
       float hold = 0.35 + 1.3 * fract(info.y * 7.31);
-      acc += (off / max(d, 0.0001) * (30.0 + 26.0 * uPress) + uPointerVelocity * 40.0 + flow(pos * 5.0, uTime * 4.0) * 8.0) * reach * hold;
+      // Hovering lights particles up and stirs them gently; holding the button or a finger down pushes hard
+      acc += (off / max(d, 0.0001) * mix(7.0, 56.0, uPress) + uPointerVelocity * mix(18.0, 40.0, uPress) + flow(pos * 5.0, uTime * 4.0) * 6.0) * reach * hold;
     }
     // Tap: a ring pushed outward from where the finger or click landed
     vec3 tapOff = offRay(pos, uTapOrigin, uTapDir);
     float tapD = length(tapOff);
-    acc += tapOff / max(tapD, 0.0001) * 150.0 * uTap * pow(max(0.0, 1.0 - tapD / 0.9), 2.0);
+    acc += tapOff / max(tapD, 0.0001) * 150.0 * uTap * caught * pow(max(0.0, 1.0 - tapD / 0.9), 2.0);
 
     vec3 vel = (v.xyz + acc * uDelta) * exp(-mix(0.12, 7.5, caught) * uDelta);
     gl_FragColor = vec4(vel, 1.0);
@@ -174,7 +190,19 @@ const positionShader = /* glsl */ `
   uniform float uDelta;
   uniform vec3 uOrigin;
   uniform float uSnap; // reduced motion: every particle sits at home
+  uniform float uFloorY; // a little below the bottom of the screen, in the bear's own space
+  uniform vec3 uRayOrigin;
+  uniform vec3 uRayDir;
+  uniform float uPointerStrength;
+  uniform float uPress;
   ${homeChunk}
+
+  // How brightly the pointer lights this particle: near the ray under it, a little wider while pressed
+  float lit(vec3 p) {
+    vec3 w = p - uRayOrigin;
+    float d = length(w - uRayDir * dot(w, uRayDir));
+    return uPointerStrength * pow(max(0.0, 1.0 - d / (0.42 * (1.0 + 0.4 * uPress))), 1.5);
+  }
 
   void main() {
     vec2 uv = gl_FragCoord.xy / resolution.xy;
@@ -182,11 +210,16 @@ const positionShader = /* glsl */ `
     if (uSnap > 0.5) {
       vec4 info = texture2D(tInfo, uv);
       bool shown = info.x < 1e5 && texture2D(tLaunch, uv).y < 0.5; // no confetti without motion
-      gl_FragColor = vec4(homeOf(uv, info, morphOf(uv)), shown ? 1.0 : 0.0);
+      gl_FragColor = vec4(homeOf(uv, info, morphOf(uv), bloomOf(uv)), shown ? 1.0 : 0.0);
       return;
     }
     if (v.w < 0.5) { gl_FragColor = vec4(uOrigin, 0.0); return; } // w = 0: not thrown yet
     vec4 previous = texture2D(texturePosition, uv);
+    if (previous.w < -0.5) { gl_FragColor = previous; return; } // confetti that has fallen off screen: gone
+    if (texture2D(tLaunch, uv).y > 0.5 && previous.w > 0.5 && previous.y < uFloorY) {
+      gl_FragColor = vec4(previous.xyz, -1.0);
+      return;
+    }
     if (previous.w < 0.5) {
       // Just thrown: start from a spot across the box's mouth, already as far along as its own
       // launch time says, so particles thrown within one frame don't move in lockstep rings
@@ -198,7 +231,10 @@ const positionShader = /* glsl */ `
       gl_FragColor = vec4(uOrigin + mouth + thrown, 1.0);
       return;
     }
-    gl_FragColor = vec4(previous.xyz + v.xyz * uDelta, 1.0);
+    // w = 1 + glow: lights up under the pointer, fades over about half a second after it leaves
+    vec3 next = previous.xyz + v.xyz * uDelta;
+    float glow = max(lit(next), (previous.w - 1.0) * exp(-2.4 * uDelta));
+    gl_FragColor = vec4(next, 1.0 + min(glow, 1.0));
   }
 `;
 
@@ -213,11 +249,14 @@ const pointsVertex = /* glsl */ `
   uniform float uSizeScale;
   uniform float uConfettiSize;
   uniform float uMorph;
+  uniform float uBloom;
+  uniform float uBouquetScale;
   uniform float uBeat;
   attribute vec2 aRef;
   attribute float aConfetti;
   attribute vec3 aColor;
   attribute vec3 aHeartColor;
+  attribute vec3 aBouquetColor;
   attribute float aSize;
   attribute float aHeart;
   attribute float aSeed;
@@ -225,6 +264,7 @@ const pointsVertex = /* glsl */ `
   varying float vFlight;
   varying float vSpin;
   varying float vConfetti;
+  varying float vGlow;
 
   void main() {
     vec4 sim = texture2D(uPositions, aRef);
@@ -235,13 +275,19 @@ const pointsVertex = /* glsl */ `
     }
     vec4 mvPosition = modelViewMatrix * vec4(sim.xyz, 1.0);
     gl_Position = projectionMatrix * mvPosition;
-    gl_PointSize = (aConfetti > 0.5 ? uConfettiSize : aSize * uSizeScale) * uPointScale / -mvPosition.z;
-
+    float glow = clamp(sim.w - 1.0, 0.0, 1.0) * (1.0 - aConfetti);
+    vGlow = glow;
     float start = texture2D(tLaunch, aRef).w;
     float m = smoothstep(start, start + 0.5, uMorph);
-    vec3 color = mix(aColor, aHeartColor, m);
+    float b = smoothstep(start, start + 0.5, uBloom);
+    // The beads scale with the bouquet's size against the bear's, so it stays as densely packed
+    float bouquetGrowth = clamp(uBouquetScale * 2.0 / 3.25, 0.85, 1.6);
+    gl_PointSize = (aConfetti > 0.5 ? uConfettiSize : aSize * uSizeScale * (1.0 + 0.7 * glow) * mix(1.0, bouquetGrowth, b)) * uPointScale / -mvPosition.z;
+    vec3 color = mix(mix(aColor, aHeartColor, m), aBouquetColor, b);
     // Heartbeat: the heart's particles swell toward paler blues for a moment
-    color = mix(color, vec3(0.62, 0.8, 1.0), max(aHeart, m) * uBeat * 0.55);
+    color = mix(color, vec3(0.62, 0.8, 1.0), max(aHeart, m) * (1.0 - b) * uBeat * 0.55);
+    // Lit by the pointer: brighter and paler
+    color = mix(color, vec3(0.8, 0.94, 1.0), glow * 0.75) * (1.0 + 0.9 * glow);
     // Glitter: now and then a fleck catches the light
     float glint = pow(max(0.0, sin(uTime * (1.2 + aSeed * 2.6) + aSeed * 97.0)), 60.0);
     vColor = mix(color, vec3(0.92, 0.96, 1.0), glint * (1.0 - aConfetti) * 0.9);
@@ -280,6 +326,42 @@ const pointsFragment = /* glsl */ `
   }
 `;
 
+// A soft light around each particle the pointer has lit, drawn additively over the flecks
+const haloVertex = /* glsl */ `
+  uniform sampler2D uPositions;
+  uniform float uPointScale;
+  uniform float uSizeScale;
+  attribute vec2 aRef;
+  attribute float aConfetti;
+  attribute float aSize;
+  varying float vGlow;
+
+  void main() {
+    vec4 sim = texture2D(uPositions, aRef);
+    float glow = sim.w < 0.5 ? 0.0 : clamp(sim.w - 1.0, 0.0, 1.0) * (1.0 - aConfetti);
+    vGlow = glow;
+    if (glow < 0.02) {
+      gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      gl_PointSize = 0.0;
+      return;
+    }
+    vec4 mvPosition = modelViewMatrix * vec4(sim.xyz, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    gl_PointSize = aSize * uSizeScale * 7.0 * glow * uPointScale / -mvPosition.z;
+  }
+`;
+
+const haloFragment = /* glsl */ `
+  varying float vGlow;
+
+  void main() {
+    float d = length(gl_PointCoord - 0.5) * 2.0;
+    if (d > 1.0) discard;
+    float light = (1.0 - d) * (1.0 - d) * vGlow * 0.6;
+    gl_FragColor = vec4(vec3(0.55, 0.8, 1.0) * light, light);
+  }
+`;
+
 // ── Setup ───────────────────────────────────────────────────
 
 export interface StepInput {
@@ -289,8 +371,14 @@ export interface StepInput {
   origin: Vector3;
   /** Height of the top of the screen, in the bear's own space */
   apexY: number;
+  /** A little below the bottom of the screen, in the bear's own space: confetti past it is removed */
+  floorY: number;
   morph: number;
   heartScale: number;
+  bloom: number;
+  bouquetScale: number;
+  /** Where the bouquet's center sits, in the bear's own space */
+  bouquetOffset: Vector3;
   beat: number;
   rayOrigin: Vector3;
   rayDir: Vector3;
@@ -305,7 +393,8 @@ export interface StepInput {
 }
 
 export interface BearParticles {
-  points: Points;
+  /** The flecks and their glow, to add to the scene */
+  object: Group;
   material: ShaderMaterial;
   step(input: StepInput): void;
   dispose(): void;
@@ -360,28 +449,39 @@ const CONFETTI_COLORS: [number, number, number][] = [
   [0.62, 0.78, 1],
 ];
 
-export function createBearParticles(renderer: WebGLRenderer, bear: BearCloud, heart: HeartCloud, confetti: number): BearParticles | null {
+export function createBearParticles(
+  renderer: WebGLRenderer,
+  bear: BearCloud,
+  heart: HeartCloud,
+  bouquet: BouquetCloud,
+  confetti: number,
+): BearParticles | null {
   const total = bear.count + confetti;
   const size = Math.ceil(Math.sqrt(total));
   const gpgpu = new GPUComputationRenderer(size, size, renderer);
   // Full float where the GPU can render to it, half float (most phones) otherwise
   if (!renderer.extensions.has("EXT_color_buffer_float")) gpgpu.setDataType(HalfFloatType);
 
-  // Each bear particle becomes the heart point at the same rank by height, so the morph flows
-  // top to top and bottom to bottom instead of scrambling
+  // Each bear particle becomes the heart point, and then the bouquet point, at the same rank by
+  // height, so each change flows top to top and bottom to bottom instead of scrambling
   const byHeight = (positions: Float32Array) =>
     Array.from({ length: bear.count }, (_, i) => i).sort((a, b) => positions[a * 3 + 1] - positions[b * 3 + 1]);
   const bearOrder = byHeight(bear.positions);
   const heartOrder = byHeight(heart.positions);
   const heartIndex = new Uint32Array(bear.count);
   bearOrder.forEach((b, rank) => (heartIndex[b] = heartOrder[rank]));
+  const bouquetOrder = byHeight(bouquet.positions);
+  const bouquetIndex = new Uint32Array(bear.count);
+  bearOrder.forEach((b, rank) => (bouquetIndex[b] = bouquetOrder[rank]));
 
   const bearEdge = outlineNearness(bear.positions, bear.count, 0.04);
   const heartEdge = outlineNearness(heart.positions, bear.count, 0.03);
+  const bouquetEdge = outlineNearness(bouquet.positions, bear.count, 0.025, 3);
   const random = seededRandom(91);
   const texels = size * size;
   const bearHome = new Float32Array(texels * 4);
   const heartHome = new Float32Array(texels * 4);
+  const bouquetHome = new Float32Array(texels * 4);
   const info = new Float32Array(texels * 4);
   const launch = new Float32Array(texels * 4);
   const refs = new Float32Array(total * 2);
@@ -389,6 +489,7 @@ export function createBearParticles(renderer: WebGLRenderer, bear: BearCloud, he
   const colors = new Float32Array(total * 3);
   colors.set(bear.colors);
   const heartColors = new Float32Array(total * 3);
+  const bouquetColors = new Float32Array(total * 3);
   const sizes = new Float32Array(total);
   sizes.set(bear.sizes);
   const inHeartFlags = new Float32Array(total);
@@ -402,12 +503,16 @@ export function createBearParticles(renderer: WebGLRenderer, bear: BearCloud, he
       bearHome.set([bear.positions[i * 3], bear.positions[i * 3 + 1], bear.positions[i * 3 + 2], bearEdge[i]], i * 4);
       heartHome.set([heart.positions[h * 3], heart.positions[h * 3 + 1], heart.positions[h * 3 + 2], heartEdge[h]], i * 4);
       heartColors.set([heart.colors[h * 3], heart.colors[h * 3 + 1], heart.colors[h * 3 + 2]], i * 3);
+      const q = bouquetIndex[i];
+      bouquetHome.set([bouquet.positions[q * 3], bouquet.positions[q * 3 + 1], bouquet.positions[q * 3 + 2], bouquetEdge[q]], i * 4);
+      bouquetColors.set([bouquet.colors[q * 3], bouquet.colors[q * 3 + 1], bouquet.colors[q * 3 + 2]], i * 3);
     }
     const inHeart = real ? bear.heart[i] : 0;
     // A stream over about half a second; the bear's heart goes up last. Spare texels never launch.
     const delay = real || paper ? random() * 0.55 + inHeart * 0.25 : 1e6;
     const seed = random();
-    info.set([delay, seed, inHeart, paper ? 0.85 + random() * 0.23 : 0.82 + random() * 0.18], i * 4);
+    // Each aims for its own height near the top, so the top of the arc is a dome, not a flat band
+    info.set([delay, seed, inHeart, paper ? 0.7 + random() * 0.38 : 0.6 + random() * 0.4], i * 4);
     const angle = random() * Math.PI * 2;
     const throwSpeed = paper ? 0.8 + random() * 1.6 : 0.3 + random() * 1.1;
     const yNorm = real ? (bear.positions[i * 3 + 1] + 1.62) / 3.25 : 0;
@@ -416,6 +521,7 @@ export function createBearParticles(renderer: WebGLRenderer, bear: BearCloud, he
       const color = CONFETTI_COLORS[Math.floor(random() * CONFETTI_COLORS.length)];
       colors.set(color, i * 3);
       heartColors.set(color, i * 3);
+      bouquetColors.set(color, i * 3);
       confettiFlags[i] = 1;
     }
     if (real || paper) {
@@ -429,12 +535,21 @@ export function createBearParticles(renderer: WebGLRenderer, bear: BearCloud, he
     texture.needsUpdate = true;
     return texture;
   };
-  const textures = { tBear: dataTexture(bearHome), tHeart: dataTexture(heartHome), tInfo: dataTexture(info), tLaunch: dataTexture(launch) };
+  const textures = {
+    tBear: dataTexture(bearHome),
+    tHeart: dataTexture(heartHome),
+    tBouquet: dataTexture(bouquetHome),
+    tInfo: dataTexture(info),
+    tLaunch: dataTexture(launch),
+  };
   const homeUniforms = () => ({
     ...Object.fromEntries(Object.entries(textures).map(([name, texture]) => [name, { value: texture }])),
     uHeartCenter: { value: new Vector3(...bear.heartCenter) },
     uMorph: { value: 0 },
+    uBloom: { value: 0 },
     uHeartScale: { value: 1 },
+    uBouquetScale: { value: 1 },
+    uBouquetOffset: { value: new Vector3() },
     uBeat: { value: 0 },
   });
 
@@ -444,17 +559,19 @@ export function createBearParticles(renderer: WebGLRenderer, bear: BearCloud, he
   gpgpu.setVariableDependencies(velocityVariable, [positionVariable, velocityVariable]);
   const pu = positionVariable.material.uniforms;
   const vu = velocityVariable.material.uniforms;
-  Object.assign(pu, homeUniforms(), { uTime: { value: -1 }, uDelta: { value: 0 }, uOrigin: { value: new Vector3() }, uSnap: { value: 0 } });
-  Object.assign(vu, homeUniforms(), {
+  const pointerUniforms = () => ({
+    uRayOrigin: { value: new Vector3(0, 0, 50) },
+    uRayDir: { value: new Vector3(0, 0, -1) },
+    uPointerStrength: { value: 0 },
+    uPress: { value: 0 },
+  });
+  Object.assign(pu, homeUniforms(), pointerUniforms(), { uTime: { value: -1 }, uDelta: { value: 0 }, uOrigin: { value: new Vector3() }, uSnap: { value: 0 }, uFloorY: { value: -50 } });
+  Object.assign(vu, homeUniforms(), pointerUniforms(), {
     uTime: { value: -1 },
     uDelta: { value: 0 },
     uOrigin: { value: new Vector3() },
     uApexY: { value: 2 },
-    uRayOrigin: { value: new Vector3(0, 0, 50) },
-    uRayDir: { value: new Vector3(0, 0, -1) },
     uPointerVelocity: { value: new Vector3() },
-    uPointerStrength: { value: 0 },
-    uPress: { value: 0 },
     uTapOrigin: { value: new Vector3(0, 0, 50) },
     uTapDir: { value: new Vector3(0, 0, -1) },
     uTap: { value: 0 },
@@ -475,6 +592,7 @@ export function createBearParticles(renderer: WebGLRenderer, bear: BearCloud, he
   geometry.setAttribute("aRef", new BufferAttribute(refs, 2));
   geometry.setAttribute("aColor", new BufferAttribute(colors, 3));
   geometry.setAttribute("aHeartColor", new BufferAttribute(heartColors, 3));
+  geometry.setAttribute("aBouquetColor", new BufferAttribute(bouquetColors, 3));
   geometry.setAttribute("aSize", new BufferAttribute(sizes, 1));
   geometry.setAttribute("aHeart", new BufferAttribute(inHeartFlags, 1));
   geometry.setAttribute("aSeed", new BufferAttribute(seeds, 1));
@@ -492,32 +610,57 @@ export function createBearParticles(renderer: WebGLRenderer, bear: BearCloud, he
       uSizeScale: { value: 0.017 * Math.sqrt(80000 / bear.count) },
       uConfettiSize: { value: 0.12 },
       uMorph: { value: 0 },
+      uBloom: { value: 0 },
+      uBouquetScale: { value: 1 },
       uBeat: { value: 0 },
     },
   });
+  const halo = new ShaderMaterial({
+    vertexShader: haloVertex,
+    fragmentShader: haloFragment,
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+    blending: AdditiveBlending,
+    uniforms: {
+      uPositions: material.uniforms.uPositions,
+      uPointScale: material.uniforms.uPointScale,
+      uSizeScale: material.uniforms.uSizeScale,
+    },
+  });
+  const object = new Group();
   const points = new Points(geometry, material);
-  points.frustumCulled = false; // the real positions live on the GPU, not in the geometry
+  const glow = new Points(geometry, halo);
+  glow.renderOrder = 1;
+  for (const layer of [points, glow]) {
+    layer.frustumCulled = false; // the real positions live on the GPU, not in the geometry
+    object.add(layer);
+  }
 
   return {
-    points,
+    object,
     material,
     step(input) {
       for (const uniforms of [pu, vu]) {
         uniforms.uDelta.value = input.delta;
         uniforms.uOrigin.value.copy(input.origin);
         uniforms.uMorph.value = input.morph;
+        uniforms.uBloom.value = input.bloom;
         uniforms.uHeartScale.value = input.heartScale;
+        uniforms.uBouquetScale.value = input.bouquetScale;
+        uniforms.uBouquetOffset.value.copy(input.bouquetOffset);
         uniforms.uBeat.value = input.beat;
+        uniforms.uRayOrigin.value.copy(input.rayOrigin);
+        uniforms.uRayDir.value.copy(input.rayDir);
+        uniforms.uPointerStrength.value = input.pointerStrength;
+        uniforms.uPress.value = input.press;
       }
       pu.uSnap.value = input.snap ? 1 : 0;
+      pu.uFloorY.value = input.floorY;
       pu.uTime.value = input.time;
       vu.uTime.value = input.time;
       vu.uApexY.value = input.apexY;
-      vu.uRayOrigin.value.copy(input.rayOrigin);
-      vu.uRayDir.value.copy(input.rayDir);
       vu.uPointerVelocity.value.copy(input.pointerVelocity);
-      vu.uPointerStrength.value = input.pointerStrength;
-      vu.uPress.value = input.press;
       vu.uTapOrigin.value.copy(input.tapOrigin);
       vu.uTapDir.value.copy(input.tapDir);
       vu.uTap.value = input.tap;
@@ -526,12 +669,15 @@ export function createBearParticles(renderer: WebGLRenderer, bear: BearCloud, he
       material.uniforms.uVelocities.value = gpgpu.getCurrentRenderTarget(velocityVariable).texture;
       material.uniforms.uTime.value = input.time;
       material.uniforms.uMorph.value = input.morph;
+      material.uniforms.uBloom.value = input.bloom;
+      material.uniforms.uBouquetScale.value = input.bouquetScale;
       material.uniforms.uBeat.value = input.beat;
     },
     dispose() {
       dispose();
       geometry.dispose();
       material.dispose();
+      halo.dispose();
     },
   };
 }

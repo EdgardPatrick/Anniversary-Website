@@ -1,4 +1,4 @@
-// Where the bear and the final heart sit on screen, and how they sway and beat. Shared by the live
+// Where the bear, the heart and the bouquet sit on screen, and how the heart beats. Shared by the live
 // particles (components/BearStage.tsx), the text overlay (components/GiftReveal.tsx) and the still
 // fallback (lib/bear-still.ts). No three.js here, so the overlay and the still never load it.
 
@@ -17,6 +17,9 @@ export interface Framing {
   center: ScreenPoint;
   /** Half the final heart's width, in pixels */
   heartHalf: number;
+  /** Center of the bouquet, and half its largest dimension, in pixels */
+  bouquetCenter: ScreenPoint;
+  bouquetHalf: number;
 }
 
 /** The bear centered a little above the middle, leaving the lower band of the screen for words */
@@ -27,12 +30,9 @@ export function framing(width: number, height: number): Framing {
     distance: height / (2 * unit * Math.tan((FOV * Math.PI) / 360)),
     center: { x: width / 2, y: height * 0.42 },
     heartHalf: Math.min(width * 0.24, height * 0.2),
+    bouquetCenter: { x: width / 2, y: height * 0.48 },
+    bouquetHalf: Math.min(width * 0.46, height * 0.38),
   };
-}
-
-/** A slow idle sway, so the bear and the heart are never quite still */
-export function swayAt(seconds: number) {
-  return { y: 0.14 * Math.sin(seconds * 0.45), x: 0.05 * Math.sin(seconds * 0.37 + 1) };
 }
 
 /** A heartbeat every few seconds: a quick swell, then a slower settle. 0 at rest, 1 at the peak. */

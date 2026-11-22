@@ -4,13 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { GiftBox } from "@/components/GiftBox";
 import { anniversary } from "@/data/anniversary";
-import { fallKeyframes, floorCenter, timeline, walls, type Point } from "@/lib/gift-box";
+import { fallKeyframes, floorCenter, insideKeyframes, timeline, walls, type Point } from "@/lib/gift-box";
 import { BEAR_HEIGHT, framing, type ScreenPoint } from "@/lib/bear-scene";
 import type { BearStageHandle } from "@/components/BearStage";
-import { drawBearStill } from "@/lib/bear-still";
+import { drawBearStill, type StillShape } from "@/lib/bear-still";
 import { isReducedMotion } from "@/lib/motion";
 import { reveal } from "@/lib/reveal";
-import { TRACK_SCREENS, beats, lineState, morphAt, trackProgress, turnAt, type Beat } from "@/lib/story";
+import { TRACK_SCREENS, beats, bloomAt, flipAt, lineState, morphAt, trackProgress, turnAt, type Beat } from "@/lib/story";
 import { useRevealStage } from "@/lib/use-preferences";
 
 const { greeting, finale } = anniversary;
@@ -36,7 +36,8 @@ const lineKeys = Object.keys(lineBeats) as LineKey[];
 
 // The opening screen is the gift box alone. Opening it throws glitter and paper confetti up out of
 // the box; the glitter falls into the bear and the greeting appears under it as the confetti passes.
-// Scrolling then turns the bear a full circle and changes it into the heart of "I ♥ U · Forever".
+// Scrolling turns the bear to the right into the heart of "I ♥ U · Forever", then flips the heart over
+// into a bouquet.
 // Every scroll beat follows the scroll position, both ways.
 export function GiftReveal() {
   const stage = useRevealStage();
@@ -50,7 +51,7 @@ export function GiftReveal() {
   const preparing = useRef<Promise<BearStageHandle | null> | null>(null);
   const ready = useRef<(handle: BearStageHandle | null) => void>(() => {});
   const renderer = useRef<Renderer>("pending");
-  const stillShape = useRef<"bear" | "heart" | null>(null);
+  const stillShape = useRef<StillShape | null>(null);
   const timers = useRef<number[]>([]);
   const greetingAt = useRef(-1); // when the greeting started to appear, on the performance clock
   const [stageMounted, setStageMounted] = useState(false);
@@ -67,7 +68,7 @@ export function GiftReveal() {
     return { x: p.x - bounds.left, y: p.y - bounds.top };
   }, []);
 
-  const showStill = useCallback((shape: "bear" | "heart") => {
+  const showStill = useCallback((shape: StillShape) => {
     const canvas = canvasRef.current;
     renderer.current = "still";
     if (!canvas || stillShape.current === shape) return;
@@ -182,8 +183,9 @@ export function GiftReveal() {
         const arrival = greetingAt.current < 0 ? 0 : reduced ? 1 : (now - greetingAt.current) / 900;
         for (const key of lineKeys) applyLine(key, lineState(shown, lineBeats[key], key === "greeting" ? arrival : 1), now, reduced);
         const morph = morphAt(shown);
-        sceneRef.current?.setStory({ turn: reduced ? 0 : turnAt(shown), morph });
-        if (renderer.current === "still") showStill(morph > 0.5 ? "heart" : "bear");
+        const bloom = bloomAt(shown);
+        sceneRef.current?.setStory({ turn: reduced ? 0 : turnAt(shown), flip: reduced ? 0 : flipAt(shown), morph, bloom });
+        if (renderer.current === "still") showStill(bloom > 0.5 ? "bouquet" : morph > 0.5 ? "heart" : "bear");
         if (cueRef.current) cueRef.current.style.opacity = String(Math.max(0, 1 - shown / 0.05));
       }
       frame = requestAnimationFrame(tick);
@@ -228,8 +230,10 @@ export function GiftReveal() {
     const mouseMove = (event: PointerEvent) => {
       if (event.pointerType === "mouse") sceneRef.current?.point(...local(event.clientX, event.clientY));
     };
+    // The press that opens the gift belongs to the box, not to the particles
+    const onParticles = () => reveal.get() !== "closed";
     const mouseDown = (event: PointerEvent) => {
-      if (event.pointerType !== "mouse" || event.button !== 0) return;
+      if (event.pointerType !== "mouse" || event.button !== 0 || !onParticles()) return;
       const [x, y] = local(event.clientX, event.clientY);
       sceneRef.current?.point(x, y);
       sceneRef.current?.tap(x, y);
@@ -245,12 +249,11 @@ export function GiftReveal() {
     };
     const touchStart = (event: TouchEvent) => {
       const touch = event.touches[0];
-      if (!touch) return;
+      if (!touch || !onParticles()) return;
       window.clearTimeout(release);
       const [x, y] = local(touch.clientX, touch.clientY);
-      sceneRef.current?.point(x, y);
+      sceneRef.current?.point(x, y); // a finger lights particles up and drags them, like a hovering mouse
       sceneRef.current?.tap(x, y);
-      sceneRef.current?.press(true);
     };
     const touchMove = (event: TouchEvent) => {
       const touch = event.touches[0];
@@ -258,7 +261,6 @@ export function GiftReveal() {
     };
     const touchEnd = (event: TouchEvent) => {
       if (event.touches.length) return;
-      sceneRef.current?.press(false);
       release = window.setTimeout(() => sceneRef.current?.point(null), 450);
     };
     const passive = { passive: true } as const;
@@ -378,19 +380,18 @@ export function GiftReveal() {
     });
     later(timeline.walls, () => {
       for (const wall of walls) {
-        part(`wall-${wall.name}`)?.animate(fallKeyframes(wall), {
-          duration: 760,
-          delay: wall.name.startsWith("back") ? 70 : 0,
-          easing: "linear",
-          ...keep,
-        });
+        const fall = { duration: 760, delay: wall.name.startsWith("back") ? 70 : 0, easing: "linear", ...keep };
+        part(`wall-${wall.name}`)?.animate(fallKeyframes(wall), fall);
+        part(`wall-${wall.name}-inside`)?.animate(insideKeyframes(wall), fall);
       }
     });
+    // The opened box lies flat for a moment, then fades away under the forming bear
+    later(timeline.boxFade, () => part("box")?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 900, easing: "ease-in-out", ...keep }));
 
     // 3 · The confetti goes up as the lid clears the box; the emptied box fades away under it
     later(timeline.burst, () => {
       part("glow")?.animate([{ opacity: 0 }, { opacity: 1, offset: 0.25 }, { opacity: 0 }], { duration: 1100, ...keep });
-      part("box")?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 1400, delay: 700, easing: "ease-in-out", ...keep });
+
       void startBear(false);
     });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hingeMatrix, springEasing, timeline, walls } from "@/lib/gift-box";
+import { fallKeyframes, hingeMatrix, insideKeyframes, springEasing, timeline, walls } from "@/lib/gift-box";
 
 const apply = ({ a, b, c, d }: ReturnType<typeof hingeMatrix>, [x, y]: [number, number]) => [a * x + c * y, b * x + d * y];
 
@@ -25,7 +25,29 @@ describe("gift box walls", () => {
   }
 });
 
+describe("falling walls", () => {
+  it("shows a front wall's inner face once it tips past edge-on, and never a back wall's", () => {
+    for (const wall of walls) {
+      const shown = insideKeyframes(wall).map((frame) => frame.opacity);
+      if (wall.name.startsWith("front")) {
+        expect(shown[0]).toBe(0);
+        expect(shown.at(-1)).toBe(1);
+      } else {
+        expect(shown.every((opacity) => opacity === 0)).toBe(true);
+      }
+    }
+  });
+
+  it("matches the fall's own timing", () => {
+    for (const wall of walls) expect(insideKeyframes(wall).at(-1)?.offset).toBe(fallKeyframes(wall).at(-1)?.offset);
+  });
+});
+
 describe("opening timeline", () => {
+  it("lets the walls land and lie flat before the box fades", () => {
+    expect(timeline.boxFade - (timeline.walls + 830)).toBeGreaterThanOrEqual(800);
+  });
+
   it("unties the bow before the lid moves, and bursts after the lid starts", () => {
     expect(timeline.loosen).toBeLessThan(timeline.lid);
     expect(timeline.lid).toBeLessThan(timeline.burst);

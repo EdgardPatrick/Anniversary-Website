@@ -80,6 +80,8 @@ export function GiftBox({ layer }: { layer: "back" | "front" }) {
             <g key={wall.name} data-part={`wall-${wall.name}`} style={{ transformOrigin: hingeOrigin(wall) }}>
               <polygon points={polygon(...wall.points)} fill={wallFill[wall.name]} />
               <polygon data-ribbon="" points={wallRibbon(wall) ?? ""} fill={wall.name === "front-left" ? "url(#gift-silk)" : "url(#gift-silk-shade)"} />
+              {/* Its inner face, shown once it has tipped past edge-on */}
+              <polygon data-part={`wall-${wall.name}-inside`} points={polygon(...wall.points)} fill="url(#gift-inside)" opacity="0" />
             </g>
           ))}
         {/* The box's front edge catches the light */}

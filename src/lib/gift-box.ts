@@ -128,12 +128,28 @@ const css = ({ a, b, c, d }: { a: number; b: number; c: number; d: number }) =>
   `matrix(${a.toFixed(4)}, ${b.toFixed(4)}, ${c.toFixed(4)}, ${d.toFixed(4)}, 0, 0)`;
 
 // A wall tipping over: it speeds up as it falls, lands flat, bounces once and settles
+const fallAngle = (t: number) => (t < 0.78 ? (Math.PI / 2) * (t / 0.78) ** 2 : Math.PI / 2 - 0.16 * Math.sin((Math.PI * (t - 0.78)) / 0.22));
+
 export function fallKeyframes(wall: Wall, steps = 16): Keyframe[] {
   const edgeVector = edge(wall.hinge[0], wall.hinge[1]);
   return Array.from({ length: steps + 1 }, (_, i) => {
     const t = i / steps;
-    const angle = t < 0.78 ? (Math.PI / 2) * (t / 0.78) ** 2 : Math.PI / 2 - 0.16 * Math.sin((Math.PI * (t - 0.78)) / 0.22);
-    return { offset: t, transform: css(hingeMatrix(edgeVector, wall.outward, angle)) };
+    return { offset: t, transform: css(hingeMatrix(edgeVector, wall.outward, fallAngle(t))) };
+  });
+}
+
+const facing = ({ a, b, c, d }: ReturnType<typeof hingeMatrix>) => Math.sign(a * d - b * c);
+
+/**
+ * The front walls fall toward the visitor, so partway down each is seen edge-on and then from its
+ * inner side, as a real wall would be. This fades in the inner face for that part of the fall.
+ */
+export function insideKeyframes(wall: Wall, steps = 32): Keyframe[] {
+  const edgeVector = edge(wall.hinge[0], wall.hinge[1]);
+  const outside = facing(hingeMatrix(edgeVector, wall.outward, 0));
+  return Array.from({ length: steps + 1 }, (_, i) => {
+    const t = i / steps;
+    return { offset: t, opacity: facing(hingeMatrix(edgeVector, wall.outward, fallAngle(t))) === outside ? 0 : 1 };
   });
 }
 
@@ -146,7 +162,8 @@ export const timeline = {
   loosen: 0, // both ribbon ends are pulled: the tails lengthen, the loops draw in, the knot comes undone
   lid: 1150, // the bow is gone and the loose ribbon has fallen away: the lid lifts
   burst: 1390, // the lid has cleared the box: the confetti goes up
-  walls: 1900, // the glitter is up out of the box: the walls fall open
+  walls: 1900, // the glitter is up out of the box: the walls fall open (landing about 0.8 s later)
+  boxFade: 3700, // the opened box has lain flat for about a second: it fades away under the bear
   greeting: 3500, // the falling confetti passes the greeting's place: it appears under the bear
   settled: 4900, // the glitter has fallen into the bear
   invite: 6900, // after a moment alone with the bear, the page can scroll into the story

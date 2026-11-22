@@ -11,14 +11,18 @@ import { useEffect, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Group, PerspectiveCamera, Raycaster, Vector2, Vector3 } from "three";
 import { buildBearCloud, buildHeartCloud, pointBudget } from "@/lib/bear-points";
+import { buildBouquetCloud } from "@/lib/bouquet-points";
 import { createBearParticles, type BearParticles as Simulation } from "@/lib/bear-particles";
-import { FOV, framing, pulseAt, swayAt, type ScreenPoint } from "@/lib/bear-scene";
+import { FOV, framing, pulseAt, type ScreenPoint } from "@/lib/bear-scene";
 
 export interface BearStageHandle {
   /** Throws the particles and confetti up from `from` (stage pixels, inside the box); `still` shows the finished bear at once */
   start(options: { still: boolean; from: ScreenPoint }): void;
-  /** Where the scroll story is: the bear's turn (radians) and its change into the heart (0 → 1) */
-  setStory(story: { turn: number; morph: number }): void;
+  /**
+   * Where the scroll story is: the turn to the right and the vertical flip (radians), and the
+   * changes from bear to heart and from heart to bouquet (0 → 1 each)
+   */
+  setStory(story: { turn: number; flip: number; morph: number; bloom: number }): void;
   /** The pointer or finger over the stage, in stage pixels, or null once it has left */
   point(x: number | null, y?: number): void;
   /** Held down (mouse button or finger): a wider, stronger stir */
@@ -78,7 +82,9 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
     still: false,
     opening: { x: 0, y: 0 } as ScreenPoint,
     morph: 0,
+    bloom: 0,
     turn: 0,
+    flip: 0,
     pointer: { active: false, ndc: new Vector2(9, 9), fresh: true, velocity: new Vector3(), previous: new Vector3(), strength: 0, press: 0, down: false },
     tap: { ndc: new Vector2(9, 9), strength: 0 },
   });
@@ -87,14 +93,14 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
     const state = live.current;
     const coarse = window.matchMedia("(pointer: coarse)").matches;
     const count = pointBudget({ width: window.innerWidth, height: window.innerHeight, coarse });
-    const sim = createBearParticles(gl, buildBearCloud({ count }), buildHeartCloud({ count }), coarse ? 450 : 900);
+    const sim = createBearParticles(gl, buildBearCloud({ count }), buildHeartCloud({ count }), buildBouquetCloud({ count }), coarse ? 450 : 900);
     const holder = group.current;
     if (!sim || !holder) {
       onReady(null);
       return;
     }
     state.sim = sim;
-    holder.add(sim.points);
+    holder.add(sim.object);
     gl.compile(scene, camera); // compile now, so the first tap doesn't stall on it
     invalidate();
 
@@ -121,12 +127,15 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
         state.still = still;
         state.opening = from;
         state.startTime = performance.now();
+        state.tap.strength = 0; // the click that opened the gift is not a tap on the particles
         if (still) invalidate();
         else resume();
       },
-      setStory({ turn, morph }) {
+      setStory({ turn, flip, morph, bloom }) {
         state.turn = turn;
+        state.flip = flip;
         state.morph = morph;
+        state.bloom = bloom;
         if (state.still) invalidate();
       },
       point(x, y = 0) {
@@ -151,7 +160,7 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
     return () => {
       observer.disconnect();
       document.removeEventListener("visibilitychange", resume);
-      holder.remove(sim.points);
+      holder.remove(sim.object);
       sim.dispose();
       state.sim = null;
     };
@@ -160,7 +169,7 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
   }, [gl]);
 
   const raycaster = useRef(new Raycaster());
-  const scratch = useRef({ hit: new Vector3(), origin: new Vector3(), tapOrigin: new Vector3(), tapDir: new Vector3(), rayOrigin: new Vector3(), rayDir: new Vector3(), moved: new Vector3() });
+  const scratch = useRef({ hit: new Vector3(), origin: new Vector3(), tapOrigin: new Vector3(), tapDir: new Vector3(), rayOrigin: new Vector3(), rayDir: new Vector3(), moved: new Vector3(), bouquet: new Vector3() });
 
   useFrame((state, frameDelta) => {
     const s = live.current;
@@ -180,8 +189,8 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
     sim.material.uniforms.uPointScale.value = (height * state.gl.getPixelRatio()) / (2 * Math.tan((FOV * Math.PI) / 360));
 
     const seconds = s.startTime < 0 ? -1 : (performance.now() - s.startTime) / 1000;
-    const sway = s.still ? { x: 0, y: 0 } : swayAt(Math.max(0, seconds));
-    bear.rotation.set(sway.x, s.turn + sway.y, 0);
+    // The shape itself only moves with the scroll; its particles never stop
+    bear.rotation.set(s.flip, s.turn, 0);
     bear.updateMatrixWorld();
     if (seconds < 0) return;
 
@@ -215,8 +224,12 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
       delta: s.still ? 0 : delta,
       origin: bear.worldToLocal(toWorld(s.opening, v.origin)),
       apexY: topOfScreen - 0.15,
+      floorY: -height / 2 / frame.unit - bear.position.y - 0.4,
       morph: s.morph,
       heartScale: frame.heartHalf / frame.unit,
+      bloom: s.bloom,
+      bouquetScale: frame.bouquetHalf / frame.unit,
+      bouquetOffset: v.bouquet.set(0, (frame.center.y - frame.bouquetCenter.y) / frame.unit, 0),
       beat: s.still ? 0 : pulseAt(seconds - ASSEMBLED),
       rayOrigin: v.rayOrigin,
       rayDir: v.rayDir,
