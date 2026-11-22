@@ -56,8 +56,15 @@ describe("scroll story", () => {
     expect(bloomAt(half)).toBeCloseTo(0.5);
     expect(flipAt(FLIP.to)).toBeCloseTo(Math.PI * 2);
     expect(bloomAt(BLOOM.to)).toBe(1);
-    // The words leave before the flip
-    for (const beat of [beats.i, beats.u, beats.forever]) expect(lineState(FLIP.from + 0.001, beat).opacity).toBe(0);
+    for (const [start, beat, blend] of [
+      [TURN.from, beats.greeting, morphAt],
+      [FLIP.from, beats.forever, bloomAt],
+    ] as const) {
+      expect(lineState(start, beat).opacity).toBe(1);
+      const during = start + 0.025;
+      expect(lineState(during, beat).opacity).toBeCloseTo(0.5);
+      expect(blend(during)).toBeGreaterThan(0);
+    }
   });
 
   it("is a pure function of scroll position, so scrolling back shows the same thing", () => {

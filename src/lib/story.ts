@@ -5,6 +5,7 @@ export interface Beat {
   /** -Infinity: already there when the scroll starts (it arrived during the opening) */
   enter: number;
   /** Infinity: stays once it has arrived */
+  /** Scroll position where the exit animation starts */
   exit: number;
 }
 
@@ -18,7 +19,7 @@ export const FLIP = { from: 0.6, to: 0.88 };
 export const BLOOM = FLIP;
 
 export const beats = {
-  greeting: { enter: -Infinity, exit: 0.07 },
+  greeting: { enter: -Infinity, exit: TURN.from },
   // "I ♥ U · Forever" appears all at once, as soon as the heart has formed
   i: { enter: TURN.to, exit: FLIP.from },
   u: { enter: TURN.to, exit: FLIP.from },
@@ -46,10 +47,10 @@ export interface LineState {
 export function lineState(progress: number, { enter, exit }: Beat, arrival = 1): LineState {
   const entered = Number.isFinite(enter) ? clamp01((progress - enter) / RAMP) : 1;
   const arrived = Math.min(entered, clamp01(arrival));
-  const leaving = Number.isFinite(exit) ? clamp01((progress - (exit - RAMP)) / RAMP) : 0;
+  const leaving = Number.isFinite(exit) ? clamp01((progress - exit) / RAMP) : 0;
   const shown = arrived * (1 - leaving);
   // The line is legible only toward the end of its ramp: it reads as stretched light, then settles
-  return { opacity: smooth(clamp01(shown / 0.55)), distort: 1 - smooth(shown) };
+  return { opacity: smooth(clamp01(arrived / 0.55)) * (1 - smooth(leaving)), distort: 1 - smooth(shown) };
 }
 
 /** The bear's turn to the right, in radians: one full circle */

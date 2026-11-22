@@ -138,16 +138,11 @@ export function GiftReveal() {
     const place = () => {
       const width = sticky.clientWidth;
       const frame = framing(width, sticky.clientHeight);
-      const gap = Math.min(32, Math.max(16, width * 0.032));
+      sticky.style.setProperty("--heart-half", `${frame.heartHalf}px`);
+      sticky.style.setProperty("--heart-y", `${frame.center.y}px`);
       const slot = (name: string) => sticky.querySelector<HTMLElement>(`[data-slot="${name}"]`)?.style;
       const words = slot("words");
       if (words) words.top = `${frame.bouquetCenter.y + frame.bouquetHalf + 14}px`;
-      const left = slot("left");
-      if (left) Object.assign(left, { right: `${width - (frame.center.x - frame.heartHalf - gap)}px`, top: `${frame.center.y}px` });
-      const right = slot("right");
-      if (right) Object.assign(right, { left: `${frame.center.x + frame.heartHalf + gap}px`, top: `${frame.center.y}px` });
-      const under = slot("under");
-      if (under) under.top = `${frame.center.y + frame.heartHalf * 0.95 + gap}px`;
       if (renderer.current === "still" && stillShape.current) {
         const shape = stillShape.current;
         stillShape.current = null;
@@ -498,18 +493,18 @@ export function GiftReveal() {
           <p className="sr-only">
             {finale.left} love {finale.right}. {finale.line}.
           </p>
-          <div data-slot="left" className="absolute -translate-y-1/2" style={{ right: "70%", top: "42%" }}>
-            <span data-line="i" aria-hidden="true" className="block font-serif text-[clamp(3rem,10vw,7.5rem)] leading-none text-foreground" style={hiddenLine("right center")}>
+          <div data-slot="left" className="heart-word-position">
+            <span data-line="i" aria-hidden="true" className="block font-serif heart-letter leading-none text-foreground" style={hiddenLine("right center")}>
               {finale.left}
             </span>
           </div>
-          <div data-slot="right" className="absolute -translate-y-1/2" style={{ left: "70%", top: "42%" }}>
-            <span data-line="u" aria-hidden="true" className="block font-serif text-[clamp(3rem,10vw,7.5rem)] leading-none text-foreground" style={hiddenLine("left center")}>
+          <div data-slot="right" className="heart-word-position">
+            <span data-line="u" aria-hidden="true" className="block font-serif heart-letter leading-none text-foreground" style={hiddenLine("left center")}>
               {finale.right}
             </span>
           </div>
-          <div data-slot="under" className="absolute inset-x-0 text-center" style={{ top: "62%" }}>
-            <span data-line="forever" aria-hidden="true" className="inline-block font-serif text-[clamp(2rem,6vw,4.2rem)] italic text-accent" style={hiddenLine("center top")}>
+          <div data-slot="under" className="heart-word-position">
+            <span data-line="forever" aria-hidden="true" className="inline-block font-serif forever-word font-semibold leading-none italic text-accent" style={hiddenLine("center top")}>
               {finale.line}
             </span>
           </div>
