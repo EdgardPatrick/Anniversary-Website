@@ -30,8 +30,8 @@ export function framing(width: number, height: number): Framing {
     distance: height / (2 * unit * Math.tan((FOV * Math.PI) / 360)),
     center: { x: width / 2, y: height * 0.42 },
     heartHalf: Math.min(width * 0.24, height * 0.2),
-    bouquetCenter: { x: width / 2, y: height * 0.48 },
-    bouquetHalf: Math.min(width * 0.46, height * 0.38),
+    bouquetCenter: { x: width / 2, y: height * 0.42 },
+    bouquetHalf: Math.min(width * 0.44, height * 0.26),
   };
 }
 

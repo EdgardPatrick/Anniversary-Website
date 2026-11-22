@@ -12,12 +12,12 @@ import {
   walls,
   type Point,
 } from "@/lib/gift-box";
-import { BEAR_HEIGHT, framing, type ScreenPoint } from "@/lib/bear-scene";
+import { framing, type ScreenPoint } from "@/lib/bear-scene";
 import type { BearStageHandle } from "@/components/BearStage";
 import { drawBearStill, type StillShape } from "@/lib/bear-still";
 import { isReducedMotion } from "@/lib/motion";
 import { reveal } from "@/lib/reveal";
-import { TRACK_SCREENS, beats, bloomAt, flipAt, lineState, morphAt, trackProgress, turnAt, type Beat } from "@/lib/story";
+import { TRACK_SCREENS, beats, lineState, particleStory, trackProgress, type Beat } from "@/lib/story";
 import { useRevealStage } from "@/lib/use-preferences";
 
 const { greeting, finale } = anniversary;
@@ -43,8 +43,8 @@ const lineKeys = Object.keys(lineBeats) as LineKey[];
 
 // The opening screen is the gift box alone. Opening it throws glitter and paper confetti up out of
 // the box; the glitter falls into the bear and the greeting appears under it as the confetti passes.
-// Scrolling turns the bear to the right into the heart of "I ♥ U · Forever", then flips the heart over
-// into a bouquet.
+// Scrolling flips the bouquet into the heart of "I ♥ U · Forever", then turns the heart
+// into the bear holding a heart.
 // Every scroll beat follows the scroll position, both ways.
 export function GiftReveal() {
   const stage = useRevealStage();
@@ -107,7 +107,7 @@ export function GiftReveal() {
   // If the GPU drops the context, the finished bear is still drawn, just without WebGL
   const onStageLost = useCallback(() => {
     sceneRef.current = null;
-    if (reveal.get() !== "closed") showStill("bear");
+    if (reveal.get() !== "closed") showStill("bouquet");
   }, [showStill]);
 
   const startBear = useCallback(
@@ -115,7 +115,7 @@ export function GiftReveal() {
       const scene = await prepare();
       const from = insidePoint() ?? { x: 0, y: 0 };
       if (scene) scene.start({ still, from });
-      else showStill("bear");
+      else showStill("bouquet");
       layerRef.current?.setAttribute("data-live", "true");
     },
     [prepare, insidePoint, showStill],
@@ -141,7 +141,7 @@ export function GiftReveal() {
       const gap = Math.min(32, Math.max(16, width * 0.032));
       const slot = (name: string) => sticky.querySelector<HTMLElement>(`[data-slot="${name}"]`)?.style;
       const words = slot("words");
-      if (words) words.top = `${frame.center.y + (BEAR_HEIGHT / 2) * frame.unit + 14}px`;
+      if (words) words.top = `${frame.bouquetCenter.y + frame.bouquetHalf + 14}px`;
       const left = slot("left");
       if (left) Object.assign(left, { right: `${width - (frame.center.x - frame.heartHalf - gap)}px`, top: `${frame.center.y}px` });
       const right = slot("right");
@@ -189,9 +189,9 @@ export function GiftReveal() {
         // The greeting arrives on the clock, as the confetti falls past it, then leaves on the scroll
         const arrival = greetingAt.current < 0 ? 0 : reduced ? 1 : (now - greetingAt.current) / 900;
         for (const key of lineKeys) applyLine(key, lineState(shown, lineBeats[key], key === "greeting" ? arrival : 1), now, reduced);
-        const morph = morphAt(shown);
-        const bloom = bloomAt(shown);
-        sceneRef.current?.setStory({ turn: reduced ? 0 : turnAt(shown), flip: reduced ? 0 : flipAt(shown), morph, bloom });
+        const story = particleStory(shown, reduced);
+        sceneRef.current?.setStory(story);
+        const { bloom, morph } = story;
         if (renderer.current === "still") showStill(bloom > 0.5 ? "bouquet" : morph > 0.5 ? "heart" : "bear");
         if (cueRef.current) cueRef.current.style.opacity = String(Math.max(0, 1 - shown / 0.05));
       }

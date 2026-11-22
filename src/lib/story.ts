@@ -1,9 +1,3 @@
-// The scroll story after the bear has formed. Progress runs 0 → 1 across the hero's scroll track,
-// and everything on screen is a pure function of it, so scrolling back replays each beat in reverse.
-//
-// 0 ── greeting leaves ── the bear turns right, becoming the heart as it turns ── I ♥ U · Forever ──
-//   the heart flips over, becoming the bouquet as it flips ──── 1
-
 /** Height of the hero's scroll track, in screen heights */
 export const TRACK_SCREENS = 7;
 
@@ -64,6 +58,15 @@ export const turnAt = (progress: number) => Math.PI * 2 * span(progress, TURN);
 export const flipAt = (progress: number) => Math.PI * 2 * span(progress, FLIP);
 export const morphAt = (progress: number) => span(progress, MORPH);
 export const bloomAt = (progress: number) => span(progress, BLOOM);
+
+export function particleStory(progress: number, reducedMotion: boolean) {
+  return {
+    flip: reducedMotion ? 0 : turnAt(progress),
+    turn: reducedMotion ? 0 : flipAt(progress),
+    bloom: 1 - morphAt(progress),
+    morph: 1 - bloomAt(progress),
+  };
+}
 
 /** Scroll position → progress along the track */
 export function trackProgress(top: number, height: number, viewport: number) {

@@ -274,3 +274,19 @@ a:focus-visible .btn-arrow[data-dir="down"] {
   background: linear-gradient(to bottom, color-mix(in srgb, var(--accent) 38%, transparent), transparent 85%);
   background-clip: text;
 }
+
+.scroll-progress {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 100;
+  width: 100%;
+  height: 3px;
+  appearance: none;
+  border: 0;
+  background: #203450;
+  color: #80caff;
+  pointer-events: none;
+}
+.scroll-progress::-webkit-progress-bar { background: #203450; }
+.scroll-progress::-webkit-progress-value { background: #80caff; }
+.scroll-progress::-moz-progress-bar { background: #80caff; }

@@ -1,10 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { BLOOM, FLIP, MORPH, TURN, beats, bloomAt, flipAt, lineState, morphAt, trackProgress, turnAt } from "@/lib/story";
+import { BLOOM, FLIP, MORPH, TURN, beats, bloomAt, flipAt, lineState, morphAt, particleStory, trackProgress, turnAt } from "@/lib/story";
 import { buildBouquetCloud } from "@/lib/bouquet-points";
 import { framing, pulseAt } from "@/lib/bear-scene";
 import { buildHeartCloud } from "@/lib/bear-points";
 
 describe("scroll story", () => {
+  it("flips the bouquet into a heart, then turns the heart into a bear", () => {
+    expect(particleStory(0, false)).toMatchObject({ bloom: 1, morph: 1 });
+    const first = particleStory((TURN.from + TURN.to) / 2, false);
+    expect(first.flip).toBeCloseTo(Math.PI);
+    expect(first.bloom).toBeCloseTo(0.5);
+    expect(particleStory(0.5, false)).toMatchObject({ bloom: 0, morph: 1 });
+    const second = particleStory((FLIP.from + FLIP.to) / 2, false);
+    expect(second.turn).toBeCloseTo(Math.PI);
+    expect(second.morph).toBeCloseTo(0.5);
+    expect(particleStory(1, false)).toMatchObject({ bloom: 0, morph: 0 });
+  });
+
   it("shows the greeting as soon as it has arrived, before any scrolling, and nothing else", () => {
     expect(lineState(0, beats.greeting, 0).opacity).toBe(0);
     expect(lineState(0, beats.greeting, 1)).toEqual({ opacity: 1, distort: 0 });
