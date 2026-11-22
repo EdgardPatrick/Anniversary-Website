@@ -41,3 +41,9 @@ export function pulseAt(seconds: number, period = 4.2) {
   const t = (seconds % period) / 0.2;
   return t * Math.exp(1 - t);
 }
+
+export function finalePose(width: number, unit: number) {
+  const scale = width < 768 ? 0.70 : 1.24;
+  const projectedWidth = BEAR_WIDTH * unit * scale;
+  return { x: width - projectedWidth * 0.3, scale, yaw: -Math.PI / 4 };
+}

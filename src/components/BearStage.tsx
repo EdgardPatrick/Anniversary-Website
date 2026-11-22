@@ -13,7 +13,7 @@ import { Group, PerspectiveCamera, Raycaster, Vector2, Vector3 } from "three";
 import { buildBearCloud, buildHeartCloud, pointBudget } from "@/lib/bear-points";
 import { buildBouquetCloud } from "@/lib/bouquet-points";
 import { createBearParticles, type BearParticles as Simulation } from "@/lib/bear-particles";
-import { FOV, framing, pulseAt, type ScreenPoint } from "@/lib/bear-scene";
+import { FOV, finalePose, framing, pulseAt, type ScreenPoint } from "@/lib/bear-scene";
 
 export interface BearStageHandle {
   /** Throws the particles and confetti up from `from` (stage pixels, inside the box); `still` shows the finished bear at once */
@@ -190,7 +190,11 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
 
     const seconds = s.startTime < 0 ? -1 : (performance.now() - s.startTime) / 1000;
     // The shape itself only moves with the scroll; its particles never stop
-    bear.rotation.set(s.flip, s.turn, 0);
+    const finale = 1 - s.morph;
+    const pose = finalePose(width, frame.unit);
+    camera.setViewOffset(width, height, -(pose.x - frame.center.x) * finale, 0, width, height);
+    bear.scale.setScalar(1 + (pose.scale - 1) * finale);
+    bear.rotation.set(s.flip, s.turn + pose.yaw * finale, 0);
     bear.updateMatrixWorld();
     if (seconds < 0) return;
 

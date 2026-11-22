@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Filmstrip } from "@/components/Filmstrip";
+import { memoryPhotos } from "@/data/memory-photos";
 import dynamic from "next/dynamic";
 import { GiftBox } from "@/components/GiftBox";
 import { anniversary } from "@/data/anniversary";
@@ -48,6 +50,8 @@ const lineKeys = Object.keys(lineBeats) as LineKey[];
 // Every scroll beat follows the scroll position, both ways.
 export function GiftReveal() {
   const stage = useRevealStage();
+  const [film, setFilm] = useState({ position: 0, entrance: 0, reduced: false });
+  const extraScreens = Math.max(0, memoryPhotos.length - 1);
   const heroRef = useRef<HTMLElement>(null);
   const stickyRef = useRef<HTMLDivElement>(null);
   const giftRef = useRef<HTMLButtonElement>(null);
@@ -172,18 +176,26 @@ export function GiftReveal() {
     ) as Record<LineKey, { element: HTMLElement | null; noise: SVGFETurbulenceElement | null; map: SVGFEDisplacementMapElement | null }>;
     let frame = 0;
     let shown = -1;
+    let lastFilmProgress = -1;
     const reduced = isReducedMotion();
     const tick = (now: number) => {
       const hero = heroRef.current;
       if (hero) {
         const rect = hero.getBoundingClientRect();
-        const target = trackProgress(rect.top, rect.height, window.innerHeight);
+        const target = trackProgress(rect.top, rect.height, sticky.clientHeight) * (1 + extraScreens / (TRACK_SCREENS - 1));
         // A little smoothing so wheel steps glide; reduced motion follows the scroll exactly
         shown = shown < 0 || reduced ? target : shown + (target - shown) * 0.18;
         if (Math.abs(target - shown) < 0.0005) shown = target;
         // The greeting arrives on the clock, as the confetti falls past it, then leaves on the scroll
         const arrival = greetingAt.current < 0 ? 0 : reduced ? 1 : (now - greetingAt.current) / 900;
         for (const key of lineKeys) applyLine(key, lineState(shown, lineBeats[key], key === "greeting" ? arrival : 1), now, reduced);
+        if (lastFilmProgress !== shown) {
+          const position = Math.min(extraScreens, Math.max(0, (shown - 1) * (TRACK_SCREENS - 1)));
+          const t = Math.max(0, Math.min(1, (shown - 0.78) / 0.16));
+          const entrance = t * t * (3 - 2 * t);
+          setFilm({ position, entrance, reduced });
+          lastFilmProgress = shown;
+        }
         const story = particleStory(shown, reduced);
         sceneRef.current?.setStory(story);
         const { bloom, morph } = story;
@@ -217,7 +229,33 @@ export function GiftReveal() {
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [stage, showStill]);
+  }, [stage, showStill, extraScreens]);
+
+  useEffect(() => {
+    if (stage !== "open" || !extraScreens) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const settle = () => {
+      const hero = heroRef.current;
+      const sticky = stickyRef.current;
+      if (!hero || !sticky) return;
+      const rect = hero.getBoundingClientRect();
+      const step = (rect.height - sticky.clientHeight) / (TRACK_SCREENS - 1 + extraScreens);
+      if (step <= 0) return;
+      const position = -rect.top / step - (TRACK_SCREENS - 1);
+      if (position < 0 || position > extraScreens + 0.01) return;
+      const delta = (Math.round(position) - position) * step;
+      if (Math.abs(delta) > 1) window.scrollBy({ top: delta, behavior: isReducedMotion() ? "instant" : "smooth" });
+    };
+    const schedule = () => {
+      clearTimeout(timer);
+      timer = setTimeout(settle, 180);
+    };
+    window.addEventListener("scroll", schedule, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", schedule);
+      clearTimeout(timer);
+    };
+  }, [stage, extraScreens]);
 
   // Touch and mouse stir the particles. Touch listeners are passive, so a vertical drag still
   // scrolls the page while the particles follow the finger the whole way.
@@ -452,7 +490,7 @@ export function GiftReveal() {
       ref={heroRef}
       aria-labelledby="greeting-heading"
       className="relative"
-      style={invited ? { height: `${TRACK_SCREENS * 100}svh` } : undefined}
+      style={invited ? { height: `${(TRACK_SCREENS + extraScreens) * 100}svh` } : undefined}
     >
       <div ref={stickyRef} className="hero sticky top-0 h-svh min-h-[30rem] overflow-hidden" style={{ touchAction: "pan-y pinch-zoom" }}>
         {/* Back walls and floor, behind the particles */}
@@ -510,6 +548,7 @@ export function GiftReveal() {
           </div>
         </div>
 
+        {invited && <Filmstrip {...film} />}
         {invited && (
           <p ref={cueRef} aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-6 text-center font-mono text-[0.7rem] uppercase tracking-[0.3em] text-muted">
             Scroll

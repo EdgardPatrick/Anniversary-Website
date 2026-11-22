@@ -37,10 +37,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" id="top" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
       <head>
         <script data-cfasync="false" dangerouslySetInnerHTML={{ __html: motionScript }} />
-        {/* Without JavaScript the box can't open, so show the note straight away */}
-        <noscript>
-          <style>{"[data-after-reveal]{display:block!important}"}</style>
-        </noscript>
       </head>
       <body className="antialiased">
         <main>{children}</main>

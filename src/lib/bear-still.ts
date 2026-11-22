@@ -3,7 +3,7 @@
 
 import { buildBearCloud, buildHeartCloud } from "@/lib/bear-points";
 import { buildBouquetCloud } from "@/lib/bouquet-points";
-import { framing } from "@/lib/bear-scene";
+import { finalePose, framing } from "@/lib/bear-scene";
 
 const COUNT = 9000;
 export type StillShape = "bear" | "heart" | "bouquet";
@@ -28,16 +28,18 @@ export function drawBearStill(canvas: HTMLCanvasElement, shape: StillShape) {
   clouds ??= { bear: buildBearCloud({ count: COUNT }), heart: buildHeartCloud({ count: COUNT }), bouquet: buildBouquetCloud({ count: COUNT }) };
   const frame = framing(width, height);
   const { positions, colors } = clouds[shape];
-  const scale = shape === "heart" ? frame.heartHalf / frame.unit : shape === "bouquet" ? frame.bouquetHalf / frame.unit : 1;
+  const pose = finalePose(width, frame.unit);
+  const yaw = shape === "bear" ? pose.yaw : 0;
+  const scale = shape === "heart" ? frame.heartHalf / frame.unit : shape === "bouquet" ? frame.bouquetHalf / frame.unit : pose.scale;
   const center = shape === "bouquet" ? frame.bouquetCenter : frame.center;
   const camera = frame.distance;
 
   const projected = Array.from({ length: COUNT }, (_, i) => {
-    const x = positions[i * 3] * scale;
+    const x = (positions[i * 3] * Math.cos(yaw) + positions[i * 3 + 2] * Math.sin(yaw)) * scale;
     const y = positions[i * 3 + 1] * scale;
-    const z = positions[i * 3 + 2] * scale;
+    const z = (positions[i * 3 + 2] * Math.cos(yaw) - positions[i * 3] * Math.sin(yaw)) * scale;
     const perspective = camera / (camera - z);
-    return { x: center.x + x * frame.unit * perspective, y: center.y - y * frame.unit * perspective, z, i };
+    return { x: (shape === "bear" ? pose.x : center.x) + x * frame.unit * perspective, y: center.y - y * frame.unit * perspective, z, i };
   }).sort((a, b) => a.z - b.z);
 
   // Opaque, back to front, so nearer flecks cover farther ones as they do in 3D
