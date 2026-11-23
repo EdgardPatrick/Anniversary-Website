@@ -10,7 +10,8 @@ describe("scroll story", () => {
     const first = particleStory((TURN.from + TURN.to) / 2, false);
     expect(first.flip).toBeCloseTo(Math.PI);
     expect(first.bloom).toBeCloseTo(0.5);
-    expect(particleStory(0.5, false)).toMatchObject({ bloom: 0, morph: 1 });
+    expect(particleStory(TURN.to, false)).toMatchObject({ bloom: 0, morph: 1 });
+    expect(particleStory(TURN.to + 0.025, false).morph).toBeLessThan(1);
     const second = particleStory((FLIP.from + FLIP.to) / 2, false);
     expect(second.turn).toBeCloseTo(Math.PI);
     expect(second.morph).toBeCloseTo(0.5);
@@ -39,13 +40,15 @@ describe("scroll story", () => {
     expect(turnAt(TURN.from + 0.02)).toBeGreaterThan(0);
   });
 
-  it("shows I, U and Forever together, once the heart has formed", () => {
-    expect(beats.i.enter).toBe(MORPH.to);
-    expect(beats.u.enter).toBe(MORPH.to);
-    expect(beats.forever.enter).toBe(MORPH.to);
-    expect(lineState(MORPH.to - 0.001, beats.i).opacity).toBe(0);
-    const all = (MORPH.to + FLIP.from) / 2;
-    for (const beat of [beats.i, beats.u, beats.forever]) expect(lineState(all, beat)).toEqual({ opacity: 1, distort: 0 });
+  it("reveals the heart words together during the transformation", () => {
+    const half = (MORPH.from + MORPH.to) / 2;
+    for (const beat of [beats.i, beats.u, beats.forever]) {
+      expect(lineState(half - 0.01, beat).opacity).toBe(0);
+      const entering = lineState(half + 0.01, beat);
+      expect(entering.opacity).toBeGreaterThan(0);
+      expect(entering.opacity).toBeLessThan(1);
+      expect(lineState(MORPH.to, beat)).toEqual({ opacity: 1, distort: 0 });
+    }
   });
 
   it("changes the heart into the bouquet during its full vertical flip: halfway when upside down", () => {
@@ -61,7 +64,7 @@ describe("scroll story", () => {
       [FLIP.from, beats.forever, bloomAt],
     ] as const) {
       expect(lineState(start, beat).opacity).toBe(1);
-      const during = start + 0.025;
+      const during = start + 0.0325;
       expect(lineState(during, beat).opacity).toBeCloseTo(0.5);
       expect(blend(during)).toBeGreaterThan(0);
     }

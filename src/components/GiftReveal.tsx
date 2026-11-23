@@ -10,6 +10,7 @@ import {
   animateFrontWall,
   fallKeyframes,
   floorCenter,
+  opening,
   timeline,
   walls,
   type Point,
@@ -17,9 +18,10 @@ import {
 import { framing, type ScreenPoint } from "@/lib/bear-scene";
 import type { BearStageHandle } from "@/components/BearStage";
 import { drawBearStill, type StillShape } from "@/lib/bear-still";
+import { listenForPhotoGestures } from "@/lib/photo-navigation";
 import { isReducedMotion } from "@/lib/motion";
 import { reveal } from "@/lib/reveal";
-import { TRACK_SCREENS, beats, lineState, particleStory, trackProgress, type Beat } from "@/lib/story";
+import { FLIP, TRACK_SCREENS, beats, lineState, particleStory, trackProgress, type Beat } from "@/lib/story";
 import { useRevealStage } from "@/lib/use-preferences";
 
 const { greeting, finale } = anniversary;
@@ -51,7 +53,7 @@ const lineKeys = Object.keys(lineBeats) as LineKey[];
 export function GiftReveal() {
   const stage = useRevealStage();
   const [film, setFilm] = useState({ position: 0, entrance: 0, reduced: false });
-  const extraScreens = Math.max(0, memoryPhotos.length - 1);
+  const photoIndex = useRef(0);
   const heroRef = useRef<HTMLElement>(null);
   const stickyRef = useRef<HTMLDivElement>(null);
   const giftRef = useRef<HTMLButtonElement>(null);
@@ -69,12 +71,11 @@ export function GiftReveal() {
   const [status, setStatus] = useState("");
 
   // Just above the box's floor, in stage pixels: the throw starts inside the box
-  const insidePoint = useCallback((): ScreenPoint | null => {
+  const stagePoint = useCallback(([x, y]: Point): ScreenPoint | null => {
     const svg = giftRef.current?.querySelector("svg");
     const matrix = svg?.getScreenCTM();
     const bounds = stickyRef.current?.getBoundingClientRect();
     if (!matrix || !bounds) return null;
-    const [x, y]: Point = [floorCenter[0], floorCenter[1] - 24];
     const p = new DOMPoint(x, y).matrixTransform(matrix);
     return { x: p.x - bounds.left, y: p.y - bounds.top };
   }, []);
@@ -111,18 +112,30 @@ export function GiftReveal() {
   // If the GPU drops the context, the finished bear is still drawn, just without WebGL
   const onStageLost = useCallback(() => {
     sceneRef.current = null;
-    if (reveal.get() !== "closed") showStill("bouquet");
+    if (reveal.get() !== "closed") {
+      showStill("bouquet");
+      if (layerRef.current?.hasAttribute("data-live")) stickyRef.current?.setAttribute("data-confetti-out", "");
+    }
   }, [showStill]);
 
   const startBear = useCallback(
     async (still: boolean) => {
       const scene = await prepare();
-      const from = insidePoint() ?? { x: 0, y: 0 };
-      if (scene) scene.start({ still, from });
-      else showStill("bouquet");
+      const from = stagePoint([floorCenter[0], floorCenter[1] - 24]) ?? { x: 0, y: 0 };
+      const onEmergence = () => {
+        stickyRef.current?.setAttribute("data-confetti-out", "");
+        if (!still) stickyRef.current?.querySelector('[data-part="glow"]')?.animate(
+          [{ opacity: 0 }, { opacity: 1, offset: 0.25 }, { opacity: 0 }], { duration: 1100 },
+        );
+      };
+      if (scene) scene.start({ still, from, rimY: stagePoint(opening)?.y ?? from.y, onEmergence });
+      else {
+        showStill("bouquet");
+        onEmergence();
+      }
       layerRef.current?.setAttribute("data-live", "true");
     },
-    [prepare, insidePoint, showStill],
+    [prepare, stagePoint, showStill],
   );
 
   useEffect(() => {
@@ -176,27 +189,33 @@ export function GiftReveal() {
     ) as Record<LineKey, { element: HTMLElement | null; noise: SVGFETurbulenceElement | null; map: SVGFEDisplacementMapElement | null }>;
     let frame = 0;
     let shown = -1;
+    let photoPosition = photoIndex.current;
+    let previousTime = 0;
     let lastFilmProgress = -1;
     const reduced = isReducedMotion();
     const tick = (now: number) => {
       const hero = heroRef.current;
       if (hero) {
         const rect = hero.getBoundingClientRect();
-        const target = trackProgress(rect.top, rect.height, sticky.clientHeight) * (1 + extraScreens / (TRACK_SCREENS - 1));
+        const progress = trackProgress(rect.top, rect.height, window.innerHeight);
+        const target = progress * FLIP.to;
         // A little smoothing so wheel steps glide; reduced motion follows the scroll exactly
         shown = shown < 0 || reduced ? target : shown + (target - shown) * 0.18;
         if (Math.abs(target - shown) < 0.0005) shown = target;
         // The greeting arrives on the clock, as the confetti falls past it, then leaves on the scroll
         const arrival = greetingAt.current < 0 ? 0 : reduced ? 1 : (now - greetingAt.current) / 900;
         for (const key of lineKeys) applyLine(key, lineState(shown, lineBeats[key], key === "greeting" ? arrival : 1), now, reduced);
-        if (lastFilmProgress !== shown) {
-          const position = Math.min(extraScreens, Math.max(0, (shown - 1) * (TRACK_SCREENS - 1)));
-          const t = Math.max(0, Math.min(1, (shown - 0.78) / 0.16));
-          const entrance = t * t * (3 - 2 * t);
-          setFilm({ position, entrance, reduced });
+        if (progress < 0.999) photoIndex.current = 0;
+        const blend = reduced ? 1 : 1 - Math.exp(-(now - previousTime) / 105);
+        const next = photoPosition + (photoIndex.current - photoPosition) * blend;
+        const position = Math.abs(next - photoIndex.current) < 0.001 ? photoIndex.current : next;
+        previousTime = now;
+        const story = particleStory(shown, reduced);
+        if (lastFilmProgress !== shown || position !== photoPosition) {
+          photoPosition = position;
+          setFilm({ position, entrance: 1 - story.morph, reduced });
           lastFilmProgress = shown;
         }
-        const story = particleStory(shown, reduced);
         sceneRef.current?.setStory(story);
         const { bloom, morph } = story;
         if (renderer.current === "still") showStill(bloom > 0.5 ? "bouquet" : morph > 0.5 ? "heart" : "bear");
@@ -229,33 +248,17 @@ export function GiftReveal() {
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [stage, showStill, extraScreens]);
+  }, [stage, showStill]);
 
   useEffect(() => {
-    if (stage !== "open" || !extraScreens) return;
-    let timer: ReturnType<typeof setTimeout>;
-    const settle = () => {
-      const hero = heroRef.current;
-      const sticky = stickyRef.current;
-      if (!hero || !sticky) return;
-      const rect = hero.getBoundingClientRect();
-      const step = (rect.height - sticky.clientHeight) / (TRACK_SCREENS - 1 + extraScreens);
-      if (step <= 0) return;
-      const position = -rect.top / step - (TRACK_SCREENS - 1);
-      if (position < 0 || position > extraScreens + 0.01) return;
-      const delta = (Math.round(position) - position) * step;
-      if (Math.abs(delta) > 1) window.scrollBy({ top: delta, behavior: isReducedMotion() ? "instant" : "smooth" });
-    };
-    const schedule = () => {
-      clearTimeout(timer);
-      timer = setTimeout(settle, 180);
-    };
-    window.addEventListener("scroll", schedule, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", schedule);
-      clearTimeout(timer);
-    };
-  }, [stage, extraScreens]);
+    const hero = heroRef.current;
+    if (stage !== "open" || !hero || memoryPhotos.length < 2) return;
+    return listenForPhotoGestures(
+      () => hero.getBoundingClientRect().bottom <= window.innerHeight + 1,
+      photoIndex,
+      memoryPhotos.length,
+    );
+  }, [stage]);
 
   // Touch and mouse stir the particles. Touch listeners are passive, so a vertical drag still
   // scrolls the page while the particles follow the finger the whole way.
@@ -448,8 +451,6 @@ export function GiftReveal() {
 
     // 3 · The confetti goes up as the lid clears the box; the emptied box fades away under it
     later(timeline.burst, () => {
-      part("glow")?.animate([{ opacity: 0 }, { opacity: 1, offset: 0.25 }, { opacity: 0 }], { duration: 1100, ...keep });
-
       void startBear(false);
     });
 
@@ -490,7 +491,7 @@ export function GiftReveal() {
       ref={heroRef}
       aria-labelledby="greeting-heading"
       className="relative"
-      style={invited ? { height: `${(TRACK_SCREENS + extraScreens) * 100}svh` } : undefined}
+      style={invited ? { height: `${TRACK_SCREENS * 100}svh` } : undefined}
     >
       <div ref={stickyRef} className="hero sticky top-0 h-svh min-h-[30rem] overflow-hidden" style={{ touchAction: "pan-y pinch-zoom" }}>
         {/* Back walls and floor, behind the particles */}

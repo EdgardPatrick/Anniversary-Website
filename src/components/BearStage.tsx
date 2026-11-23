@@ -17,7 +17,7 @@ import { FOV, finalePose, framing, pulseAt, type ScreenPoint } from "@/lib/bear-
 
 export interface BearStageHandle {
   /** Throws the particles and confetti up from `from` (stage pixels, inside the box); `still` shows the finished bear at once */
-  start(options: { still: boolean; from: ScreenPoint }): void;
+  start(options: { still: boolean; from: ScreenPoint; rimY: number; onEmergence: () => void }): void;
   /**
    * Where the scroll story is: the turn to the right and the vertical flip (radians), and the
    * changes from bear to heart and from heart to bouquet (0 → 1 each)
@@ -79,6 +79,10 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
   const live = useRef({
     sim: null as Simulation | null,
     startTime: -1,
+    rimY: 0,
+    readingHeight: false,
+    readbackFailed: false,
+    onEmergence: null as (() => void) | null,
     still: false,
     opening: { x: 0, y: 0 } as ScreenPoint,
     morph: 1,
@@ -122,10 +126,12 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
     };
 
     onReady({
-      start({ still, from }) {
+      start({ still, from, rimY, onEmergence }) {
         if (state.startTime >= 0) return;
         state.still = still;
         state.opening = from;
+        state.rimY = rimY;
+        state.onEmergence = onEmergence;
         state.startTime = performance.now();
         state.tap.strength = 0; // the click that opened the gift is not a tap on the particles
         if (still) invalidate();
@@ -245,6 +251,22 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
       tap: s.still ? 0 : tap,
       snap: s.still,
     });
+    if (s.onEmergence && !s.readingHeight) {
+      const signal = s.onEmergence;
+      const finish = () => {
+        if (s.sim !== sim || !s.onEmergence) return;
+        s.onEmergence = null;
+        signal();
+      };
+      if (s.still || seconds >= ASSEMBLED) finish();
+      else if (!s.readbackFailed) {
+        const rim = (frame.center.y - s.rimY) / frame.unit;
+        s.readingHeight = true;
+        void sim.firstConfettiHeight().then(y => {
+          if (y >= rim) finish();
+        }, () => { s.readbackFailed = true; }).finally(() => { s.readingHeight = false; });
+      }
+    }
   });
 
   return <group ref={group} />;

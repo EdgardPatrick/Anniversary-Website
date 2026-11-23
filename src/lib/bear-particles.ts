@@ -20,6 +20,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   DataTexture,
+  DataUtils,
   FloatType,
   Group,
   HalfFloatType,
@@ -396,6 +397,7 @@ export interface BearParticles {
   /** The flecks and their glow, to add to the scene */
   object: Group;
   material: ShaderMaterial;
+  firstConfettiHeight(): Promise<number>;
   step(input: StepInput): void;
   dispose(): void;
 }
@@ -495,6 +497,7 @@ export function createBearParticles(
   const inHeartFlags = new Float32Array(total);
   inHeartFlags.set(bear.heart);
   const confettiFlags = new Float32Array(total);
+  let firstPaper = bear.count;
   for (let i = 0; i < texels; i++) {
     const real = i < bear.count;
     const paper = !real && i < total;
@@ -518,6 +521,7 @@ export function createBearParticles(
     const yNorm = real ? (bear.positions[i * 3 + 1] + 1.62) / 3.25 : 0;
     launch.set([Math.cos(angle) * throwSpeed, paper ? 1 : 0, Math.sin(angle) * throwSpeed * 0.7, 0.32 * random() + 0.18 * (1 - yNorm)], i * 4);
     if (paper) {
+      if (delay < info[firstPaper * 4]) firstPaper = i;
       const color = CONFETTI_COLORS[Math.floor(random() * CONFETTI_COLORS.length)];
       colors.set(color, i * 3);
       heartColors.set(color, i * 3);
@@ -640,6 +644,14 @@ export function createBearParticles(
   return {
     object,
     material,
+    async firstConfettiHeight() {
+      const target = gpgpu.getCurrentRenderTarget(positionVariable);
+      const half = target.texture.type === HalfFloatType;
+      const pixel = half ? new Uint16Array(4) : new Float32Array(4);
+      await renderer.readRenderTargetPixelsAsync(target, firstPaper % size, Math.floor(firstPaper / size), 1, 1, pixel);
+      if (!pixel[3]) return -Infinity;
+      return half ? DataUtils.fromHalfFloat(pixel[1]) : pixel[1];
+    },
     step(input) {
       for (const uniforms of [pu, vu]) {
         uniforms.uDelta.value = input.delta;

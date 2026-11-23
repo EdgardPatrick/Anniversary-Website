@@ -10,13 +10,13 @@ export function Filmstrip({ position, entrance, reduced }: { position: number; e
   return (
     <section className="memory-scene" aria-label="Photo memories" style={{ opacity: entrance }}>
       <div className="film-window" style={{
-        transform: `translate(-50%, ${reduced ? 0 : 100 * (1 - entrance)}%)`,
+        transform: `translate(-50%, calc((50% + var(--frame-height) / 2) * ${reduced ? 0 : 1 - entrance}))`,
         clipPath: `inset(max(0%, calc(50% - var(--frame-height) * ${position + 0.5})) 0 0)`,
       }}>
         {memoryPhotos.slice(Math.max(0, index - 2), index + 3).map((frame, i) => {
           const number = Math.max(0, index - 2) + i;
           const offset = number - position;
-          const distance = Math.abs(offset) + (reduced ? 0 : 2.4 * (1 - entrance));
+          const distance = Math.abs(offset);
           const edge = Math.min(1, Math.max(0, (distance - 0.35) / 1.28));
           return (
             <div className="film-frame" key={number} aria-hidden={number !== index}

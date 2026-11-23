@@ -1,6 +1,3 @@
-/** Height of the hero's scroll track, in screen heights */
-export const TRACK_SCREENS = 7;
-
 export interface Beat {
   /** -Infinity: already there when the scroll starts (it arrived during the opening) */
   enter: number;
@@ -10,24 +7,28 @@ export interface Beat {
 }
 
 /** One full turn to the right */
-export const TURN = { from: 0.07, to: 0.38 };
+export const TURN = { from: 0.09, to: 0.43 };
 /** The change runs through the whole turn: halfway done with its back to us, finished facing front */
 export const MORPH = TURN;
 /** One full vertical flip of the heart */
-export const FLIP = { from: 0.6, to: 0.88 };
+export const FLIP = { from: 0.44, to: 0.75 };
 /** The change runs through the whole flip: halfway done upside down, finished upright */
 export const BLOOM = FLIP;
 
+// The first photo is centered at the end of the final transformation.
+export const TRACK_SCREENS = 1 + 4.6 * FLIP.to;
+
+const heartWords = { enter: TURN.from + (TURN.to - TURN.from) * 0.5, exit: FLIP.from };
+
 export const beats = {
   greeting: { enter: -Infinity, exit: TURN.from },
-  // "I ♥ U · Forever" appears all at once, as soon as the heart has formed
-  i: { enter: TURN.to, exit: FLIP.from },
-  u: { enter: TURN.to, exit: FLIP.from },
-  forever: { enter: TURN.to, exit: FLIP.from },
+  i: heartWords,
+  u: heartWords,
+  forever: heartWords,
 } satisfies Record<string, Beat>;
 
 /** Share of the track a line spends rippling in, and again rippling out */
-const RAMP = 0.05;
+const RAMP = 0.065;
 
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
 const smooth = (t: number) => t * t * (3 - 2 * t);
