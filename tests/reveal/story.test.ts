@@ -11,7 +11,9 @@ describe("scroll story", () => {
     expect(first.flip).toBeCloseTo(Math.PI);
     expect(first.bloom).toBeCloseTo(0.5);
     expect(particleStory(TURN.to, false)).toMatchObject({ bloom: 0, morph: 1 });
-    expect(particleStory(TURN.to + 0.025, false).morph).toBeLessThan(1);
+    const hold = TURN.to + 0.04;
+    expect(particleStory(hold, false)).toMatchObject({ bloom: 0, morph: 1, turn: 0 });
+    expect(lineState(hold, beats.forever)).toEqual({ opacity: 1, distort: 0 });
     const second = particleStory((FLIP.from + FLIP.to) / 2, false);
     expect(second.turn).toBeCloseTo(Math.PI);
     expect(second.morph).toBeCloseTo(0.5);

@@ -11,7 +11,7 @@ export const TURN = { from: 0.09, to: 0.43 };
 /** The change runs through the whole turn: halfway done with its back to us, finished facing front */
 export const MORPH = TURN;
 /** One full vertical flip of the heart */
-export const FLIP = { from: 0.44, to: 0.75 };
+export const FLIP = { from: 0.48, to: 0.79 };
 /** The change runs through the whole flip: halfway done upside down, finished upright */
 export const BLOOM = FLIP;
 
