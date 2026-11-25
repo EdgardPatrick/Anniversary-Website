@@ -7,7 +7,7 @@ export const anniversary: Anniversary = {
   description: "A little something for you, wrapped in your favorite blue.",
   brand: "For you",
   giftLabel: "Open your anniversary gift",
-  revealDescription: "A teddy bear made of blue confetti, holding a blue heart.",
+  revealDescription: "A bouquet of blue tulips around a sunflower, wrapped in light blue.",
   greeting: {
     eyebrow: "An anniversary delivery",
     title: ["Happy Anniversary,", "baeby."],

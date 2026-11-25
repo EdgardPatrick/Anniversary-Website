@@ -43,30 +43,23 @@ export function filmLayout(width: number, height: number): FilmLayout {
 // focus lies flat.
 // The film is wider than a frame is long, so its bends stay long and gentle: a tight bend
 // sideways would fold its inner edge over itself.
-const DESKTOP_PATH: Vec3[] = [
-  [0.45, 3.4, 0.3], // gone off the top
-  [0.2, 2.3, 0.15],
-  [0.04, 1.25, 0.03],
-  [0, 0.6, 0],
-  [0, 0, 0], // the photo in focus
-  [0, -0.6, 0],
-  [0.05, -1.15, -0.85], // a long, slow curve back…
-  [0.17, -1.6, -2.4],
-  [0.3, -2.0, -4.3], // …down past the bottom edge, from back below the screen
-];
-
-const MOBILE_PATH: Vec3[] = [
-  [-3.2, 0.3, 1.2], // gone off the left, passing the viewer
-  [-2.0, 0.12, 0.6],
-  [-1.2, 0.02, 0.15],
-  [-0.62, 0, 0],
-  [0, 0, 0], // the photo in focus
-  [0.62, 0, 0],
-  [1.0, 0.04, -0.8],
-  [1.25, 0.16, -2.6], // a gentle rise and fall as it comes forward
-  [1.45, -0.04, -4.6],
-  [1.65, 0.14, -7], // far back, beyond the right edge
-];
+// Keep the turns inside the visible band between the focused frame and the viewport edge.
+function filmControls(layout: FilmLayout): Vec3[] {
+  const edge = (layout.vertical ? layout.focus.y : layout.focus.x) / layout.length;
+  const band = edge - 0.5;
+  const lower: Vec3[] = [
+    [0, -0.28, -0.009],
+    [-0.005, -0.56, -0.045],
+    [-0.02, -(0.5 + band * 0.36), -0.14],
+    [-0.055, -(0.5 + band * 0.65), -0.38],
+    [-0.13, -(0.5 + band * 0.86), -0.88],
+    [-0.36, -(0.5 + band * 0.37), -2.35],
+    [-0.58, -(edge + 0.65), -3.9],
+  ];
+  const upper: Vec3[] = lower.map(([x, y, z]) => [-x, -y, z]);
+  const controls: Vec3[] = [...upper.reverse(), [0, 0, 0], ...lower];
+  return layout.vertical ? controls : controls.map(([x, y, z]) => [-y, x, z]);
+}
 
 export interface FilmPath {
   /** Sample spacing, in pixels */
@@ -81,7 +74,7 @@ export interface FilmPath {
   /** Per sample: position, unit tangent (pointing toward the entry), unit "across" vector */
   position: Float32Array;
   tangent: Float32Array;
-  across: Float32Array;
+  across: Vec3;
 }
 
 const STEPS_PER_FRAME = 24;
@@ -94,36 +87,24 @@ const STEPS_PER_FRAME = 24;
 export function buildFilmPath(layout: FilmLayout, origin: Vec3, cameraDistance: number): FilmPath {
   const L = layout.length;
   // From where each point shows on screen and how deep it is, to where it sits in the world
-  const points = (layout.vertical ? DESKTOP_PATH : MOBILE_PATH).map(([x, y, z]) => {
+  const controls = filmControls(layout);
+  const points = controls.map(([x, y, z]) => {
     const depth = (cameraDistance - z * L) / cameraDistance;
     return new Vector3((origin[0] + x * L) * depth, (origin[1] + y * L) * depth, origin[2] + z * L);
   });
-  const focusPoint = (layout.vertical ? DESKTOP_PATH : MOBILE_PATH).findIndex((point) => point.every((v) => v === 0));
   const curve = new CatmullRomCurve3(points, false, "centripetal");
   curve.arcLengthDivisions = 4000;
-  const lengths = curve.getLengths(4000);
+  const lengths = curve.getLengths();
   const total = lengths[lengths.length - 1];
 
-  // Arc length at the focus: the curve passes through every control point, so find the nearest sample
-  let best = 0;
-  let bestDistance = Infinity;
-  const probe = new Vector3();
-  for (let i = 0; i <= 4000; i++) {
-    curve.getPoint(i / 4000, probe);
-    const d = probe.distanceToSquared(points[focusPoint]);
-    if (d < bestDistance) {
-      bestDistance = d;
-      best = i;
-    }
-  }
-  const focusArc = lengths[best];
-
+  // Both halves have the same number of controls, so t = 0.5 is the focus.
+  const focusArc = lengths[curve.arcLengthDivisions / 2];
   const step = L / STEPS_PER_FRAME;
   const zero = Math.floor(focusArc / step);
   const count = zero + Math.floor((total - focusArc) / step) + 1;
   const position = new Float32Array(count * 3);
   const tangent = new Float32Array(count * 3);
-  const across = new Float32Array(count * 3);
+  const across: Vec3 = layout.vertical ? [1, 0, 0] : [0, 1, 0];
   const p = new Vector3();
   const t = new Vector3();
   for (let i = 0; i < count; i++) {
@@ -134,29 +115,6 @@ export function buildFilmPath(layout: FilmLayout, origin: Vec3, cameraDistance: 
     tangent.set([t.x, t.y, t.z], i * 3);
   }
 
-  // The film keeps its face turned toward the viewer as it curves, so a photo never shows its
-  // back: "across" is square to both the film's length and the line of sight
-  let previous: Vec3 = layout.vertical ? [1, 0, 0] : [0, 1, 0];
-  for (const direction of [1, -1]) {
-    previous = layout.vertical ? [1, 0, 0] : [0, 1, 0];
-    for (let i = zero; i >= 0 && i < count; i += direction) {
-      const k = i * 3;
-      // Line of sight × tangent, with the line of sight taken as straight out of the screen
-      const c: Vec3 = [-tangent[k + 1], tangent[k], 0];
-      const l = Math.hypot(c[0], c[1]);
-      if (l < 0.05) c.splice(0, 3, ...previous);
-      else {
-        c[0] /= l;
-        c[1] /= l;
-        if (c[0] * previous[0] + c[1] * previous[1] < 0) {
-          c[0] = -c[0];
-          c[1] = -c[1];
-        }
-      }
-      across.set(c, k);
-      previous = c;
-    }
-  }
   return { step, zero, count, entry: (count - 1 - zero) * step, exit: zero * step, position, tangent, across };
 }
 
@@ -173,6 +131,7 @@ function normalize(v: Vec3) {
  * straight.
  */
 export function samplePath(path: FilmPath, s: number, position: Vec3, tangent: Vec3, across: Vec3) {
+  [across[0], across[1], across[2]] = path.across;
   const f = s / path.step + path.zero;
   const last = path.count - 1;
   if (f < 0 || f > last) {
@@ -180,7 +139,6 @@ export function samplePath(path: FilmPath, s: number, position: Vec3, tangent: V
     const over = (f < 0 ? f : f - last) * path.step;
     for (let n = 0; n < 3; n++) {
       tangent[n] = path.tangent[k + n];
-      across[n] = path.across[k + n];
       position[n] = path.position[k + n] + tangent[n] * over;
     }
     return;
@@ -192,10 +150,8 @@ export function samplePath(path: FilmPath, s: number, position: Vec3, tangent: V
   for (let n = 0; n < 3; n++) {
     position[n] = path.position[a + n] + (path.position[b + n] - path.position[a + n]) * blend;
     tangent[n] = path.tangent[a + n] + (path.tangent[b + n] - path.tangent[a + n]) * blend;
-    across[n] = path.across[a + n] + (path.across[b + n] - path.across[a + n]) * blend;
   }
   normalize(tangent);
-  normalize(across);
 }
 
 /**
@@ -205,7 +161,7 @@ export function samplePath(path: FilmPath, s: number, position: Vec3, tangent: V
 export function entryOffset(entrance: number, reduced: boolean, run: number) {
   if (reduced) return 0;
   const t = Math.min(1, Math.max(0, entrance));
-  return run * Math.pow(1 - t, 2.2);
+  return run * (1 - t) ** 2 * (1 + 2 * t);
 }
 
 /**

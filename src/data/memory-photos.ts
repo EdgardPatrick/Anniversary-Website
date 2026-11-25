@@ -10,4 +10,13 @@ export const memoryPhotos: MemoryPhoto[] = [
   { src: "", alt: "", date: "", description: "" },
   { src: "", alt: "", date: "", description: "" },
   { src: "", alt: "", date: "", description: "" },
+  { src: "", alt: "", date: "", description: "" },
+  { src: "", alt: "", date: "", description: "" },
+  { src: "", alt: "", date: "", description: "" },
+  { src: "", alt: "", date: "", description: "" },
+  { src: "", alt: "", date: "", description: "" },
+  { src: "", alt: "", date: "", description: "" },
+  { src: "", alt: "", date: "", description: "" },
+  { src: "", alt: "", date: "", description: "" },
+  { src: "", alt: "", date: "", description: "" },
 ];

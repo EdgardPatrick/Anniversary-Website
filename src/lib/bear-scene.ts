@@ -49,8 +49,8 @@ export function pulseAt(seconds: number, period = 4.2) {
  */
 export function finalePose(width: number, height: number, unit: number) {
   if (width < 768) {
-    const scale = 0.62;
-    return { x: width / 2, y: height * 0.85, scale, yaw: -0.2, pitch: -0.62 };
+    const scale = Math.min(width * 0.44, height * 0.22) / unit;
+    return { x: width / 2, y: height + 0.44 * unit * scale, scale, yaw: -0.12, pitch: -0.2 };
   }
   const scale = 1.24;
   const projectedWidth = BEAR_WIDTH * unit * scale;

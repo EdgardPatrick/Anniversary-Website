@@ -26,7 +26,7 @@ export function GiftBox({ layer }: { layer: "back" | "front" }) {
       focusable="false"
       className="gift-svg block h-auto w-full overflow-visible"
     >
-      <defs>
+      {back && <defs>
         <linearGradient id="gift-lit" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#4f80ff" />
           <stop offset="1" stopColor="#2a56dc" />
@@ -57,7 +57,7 @@ export function GiftBox({ layer }: { layer: "back" | "front" }) {
           <stop offset=".45" stopColor="#6ea6ff" stopOpacity=".55" />
           <stop offset="1" stopColor="#2f6bff" stopOpacity="0" />
         </radialGradient>
-      </defs>
+      </defs>}
 
       <g data-part="box" style={origin(160, 300)}>
         {/* A soft shadow on the "floor" */}

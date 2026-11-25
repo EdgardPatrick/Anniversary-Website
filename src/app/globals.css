@@ -125,6 +125,10 @@ html[data-reveal="open"] .gift {
   transition: opacity 900ms ease;
 }
 
+html[data-reveal="open"] [data-part="box"] {
+  visibility: hidden;
+}
+
 .bear-canvas {
   opacity: 0;
 }
@@ -133,140 +137,10 @@ html[data-reveal="open"] .gift {
   opacity: 1;
 }
 
-/* Confetti pieces (lib/confetti.ts) */
-.confetti {
-  position: absolute;
-  margin: -4px 0 0 -3px;
-  will-change: transform, opacity;
-}
-
-.confetti-strip {
-  width: 6px;
-  height: 14px;
-  border-radius: 1px;
-}
-
-.confetti-square {
-  width: 9px;
-  height: 9px;
-  border-radius: 1px;
-}
-
-.confetti-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-}
-
 /* The second line of the greeting, flattened like the portfolio's surname */
 .title-accent {
   scale: 1 0.9;
   transform-origin: center top;
-}
-
-/* The greeting rises in line by line once it appears */
-html:not([data-motion="reduce"]) .hero-in {
-  animation: hero-in 1000ms var(--ease-out) both;
-  animation-delay: calc(80ms + var(--i, 0) * 110ms);
-}
-
-@keyframes hero-in {
-  from {
-    opacity: 0;
-    translate: 0 0.5em;
-    filter: blur(6px);
-  }
-}
-
-/* ── Scroll reveals (where the browser supports view timelines) ── */
-@supports (animation-timeline: view()) {
-  html:not([data-motion="reduce"]) .reveal {
-    animation: rise linear both;
-    animation-timeline: view();
-    animation-range: entry 0% entry 60%;
-  }
-
-  html:not([data-motion="reduce"]) .rule-draw {
-    transform-origin: left;
-    animation: draw linear both;
-    animation-timeline: view();
-    animation-range: entry 10% entry 70%;
-  }
-}
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    translate: 0 1.5rem;
-  }
-}
-
-@keyframes draw {
-  from {
-    scale: 0 1;
-  }
-}
-
-/* ── Buttons: a small arrow that slides, a lift, a sheen ───── */
-.btn {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  transition:
-    transform 260ms var(--ease-out),
-    box-shadow 260ms var(--ease-out),
-    border-color 200ms ease,
-    background-color 200ms ease,
-    color 200ms ease;
-}
-
-.btn:hover {
-  transform: translateY(-2px);
-}
-
-.btn:active {
-  transform: translateY(0);
-  transition-duration: 80ms;
-}
-
-.btn-primary:hover {
-  box-shadow: 0 10px 28px -10px color-mix(in srgb, var(--accent) 70%, transparent);
-}
-
-/* A diagonal sheen that sweeps across the primary button on hover */
-.btn-primary::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.3) 50%, transparent 65%);
-  translate: -110% 0;
-  transition: translate 0ms;
-}
-
-.btn-primary:hover::before {
-  translate: 110% 0;
-  transition: translate 700ms var(--ease-out);
-}
-
-.btn-arrow {
-  transition: translate 260ms var(--ease-out);
-}
-
-.btn:hover .btn-arrow[data-dir="down"],
-a:focus-visible .btn-arrow[data-dir="down"] {
-  translate: 0 3px;
-}
-
-.group:hover .btn-arrow[data-dir="up"] {
-  translate: 0 -3px;
-}
-
-/* ── Footer wordmark: huge, fading into the floor ─────────── */
-.wordmark {
-  color: transparent;
-  background: linear-gradient(to bottom, color-mix(in srgb, var(--accent) 38%, transparent), transparent 85%);
-  background-clip: text;
 }
 
 .scroll-progress {

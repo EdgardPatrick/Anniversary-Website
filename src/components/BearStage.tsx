@@ -29,8 +29,6 @@ export interface BearStageHandle {
   press(down: boolean): void;
   /** A tap or click: a ring pushed out from that spot */
   tap(x: number, y: number): void;
-  /** Seconds since the confetti was thrown, or -1 before */
-  elapsed(): number;
 }
 
 interface Props {
@@ -138,6 +136,7 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
         else resume();
       },
       setStory({ turn, flip, morph, bloom }) {
+        if (state.turn === turn && state.flip === flip && state.morph === morph && state.bloom === bloom) return;
         state.turn = turn;
         state.flip = flip;
         state.morph = morph;
@@ -160,7 +159,6 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
         toNdc(x, y, state.tap.ndc);
         state.tap.strength = 1;
       },
-      elapsed: () => (state.startTime < 0 ? -1 : (performance.now() - state.startTime) / 1000),
     });
 
     return () => {

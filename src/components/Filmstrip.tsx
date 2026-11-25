@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { supportsWebGL } from "@/lib/webgl";
 import dynamic from "next/dynamic";
 import { memoryPhotos } from "@/data/memory-photos";
 
@@ -19,14 +20,15 @@ export function Filmstrip({ position, entrance, reduced }: { position: number; e
   const hidden = entrance <= 0;
   const index = Math.round(position);
   const photo = memoryPhotos[index];
-  const captionOpacity = Math.max(0, (entrance - 0.8) / 0.2) * (1 - Math.min(1, Math.abs(position - index) * 2));
+  const focusOpacity = 1 - Math.min(1, Math.abs(position - index) * 2);
+  const captionOpacity = Math.max(0, (entrance - 0.8) / 0.2) * focusOpacity;
   return (
     // The 3D film stays mounted while the photos are scrolled away and back: unmounting a canvas
     // throws its WebGL context away, and the film would have to be built again each time
     <section className="memory-scene" aria-label="Photo memories" aria-hidden={hidden || undefined}>
       {flat ? (
         hidden ? null : 
-        <div className="film-flat" aria-hidden="true" style={{ opacity: entrance * (1 - Math.min(1, Math.abs(position - index) * 2)) }}>
+        <div className="film-flat" aria-hidden="true" style={{ opacity: entrance * focusOpacity }}>
           {photo.src ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={photo.src} alt="" />
@@ -46,14 +48,4 @@ export function Filmstrip({ position, entrance, reduced }: { position: number; e
       </div>
     </section>
   );
-}
-
-function supportsWebGL() {
-  if (typeof document === "undefined") return true;
-  try {
-    const probe = document.createElement("canvas");
-    return Boolean(probe.getContext("webgl2") ?? probe.getContext("webgl"));
-  } catch {
-    return false;
-  }
 }

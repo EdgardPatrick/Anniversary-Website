@@ -226,7 +226,3 @@ export function springEasing({ stiffness = 210, damping = 15, samples = 40 } = {
   values[values.length - 1] = "1";
   return `linear(${values.join(", ")})`;
 }
-
-export function supportsLinearEasing() {
-  return typeof CSS !== "undefined" && CSS.supports("animation-timing-function", "linear(0, 1)");
-}

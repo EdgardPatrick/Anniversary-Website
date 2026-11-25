@@ -17,12 +17,13 @@ import {
 } from "@/lib/gift-box";
 import { framing, type ScreenPoint } from "@/lib/bear-scene";
 import type { BearStageHandle } from "@/components/BearStage";
-import { drawBearStill, type StillShape } from "@/lib/bear-still";
+import type { StillShape } from "@/lib/bear-still";
+import { supportsWebGL } from "@/lib/webgl";
 import { listenForPhotoGestures } from "@/lib/photo-navigation";
 import { isReducedMotion } from "@/lib/motion";
 import { reveal } from "@/lib/reveal";
 import { FLIP, TRACK_SCREENS, beats, lineState, particleStory, trackProgress, type Beat } from "@/lib/story";
-import { useRevealStage } from "@/lib/use-preferences";
+import { useReducedMotion, useRevealStage } from "@/lib/use-preferences";
 
 const { greeting, finale } = anniversary;
 
@@ -52,6 +53,7 @@ const lineKeys = Object.keys(lineBeats) as LineKey[];
 // Every scroll beat follows the scroll position, both ways.
 export function GiftReveal() {
   const stage = useRevealStage();
+  const reduced = useReducedMotion();
   const [film, setFilm] = useState({ position: 0, entrance: 0, reduced: false });
   const photoIndex = useRef(0);
   const heroRef = useRef<HTMLElement>(null);
@@ -85,7 +87,9 @@ export function GiftReveal() {
     renderer.current = "still";
     if (!canvas || stillShape.current === shape) return;
     stillShape.current = shape;
-    drawBearStill(canvas, shape);
+    void import("@/lib/bear-still").then(({ drawBearStill }) => {
+      if (canvas === canvasRef.current && shape === stillShape.current) drawBearStill(canvas, shape);
+    });
   }, []);
 
   // Load the particles and start the simulation before anyone taps, so the throw starts on time
@@ -111,6 +115,7 @@ export function GiftReveal() {
   const onStageReady = useCallback((handle: BearStageHandle | null) => ready.current(handle), []);
   // If the GPU drops the context, the finished bear is still drawn, just without WebGL
   const onStageLost = useCallback(() => {
+    ready.current(null);
     sceneRef.current = null;
     if (reveal.get() !== "closed") {
       showStill("bouquet");
@@ -120,7 +125,8 @@ export function GiftReveal() {
 
   const startBear = useCallback(
     async (still: boolean) => {
-      const scene = await prepare();
+      await prepare();
+      const scene = sceneRef.current;
       const from = stagePoint([floorCenter[0], floorCenter[1] - 24]) ?? { x: 0, y: 0 };
       const onEmergence = () => {
         stickyRef.current?.setAttribute("data-confetti-out", "");
@@ -192,7 +198,6 @@ export function GiftReveal() {
     let photoPosition = photoIndex.current;
     let previousTime = 0;
     let lastFilmProgress = -1;
-    const reduced = isReducedMotion();
     const tick = (now: number) => {
       const hero = heroRef.current;
       if (hero) {
@@ -248,7 +253,7 @@ export function GiftReveal() {
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [stage, showStill]);
+  }, [stage, showStill, reduced]);
 
   useEffect(() => {
     const hero = heroRef.current;
@@ -457,7 +462,7 @@ export function GiftReveal() {
     // 4 · The greeting appears under the bear as the falling confetti passes over its place
     later(timeline.greeting, () => {
       greetingAt.current = performance.now();
-      setStatus(`${greeting.title.join(" ")}`);
+      setStatus(greeting.title.join(" "));
     });
 
     // 5 · The bear has formed: give it the screen for a moment, then let the story scroll
@@ -586,13 +591,3 @@ export function GiftReveal() {
 
 // Each word starts hidden; the story loop shows it
 const hiddenLine = (origin: string): React.CSSProperties => ({ opacity: 0, visibility: "hidden", transformOrigin: origin, willChange: "transform, opacity, filter" });
-
-// Checked on a throwaway canvas, so browsers without WebGL never download three.js
-function supportsWebGL() {
-  try {
-    const probe = document.createElement("canvas");
-    return Boolean(probe.getContext("webgl2") ?? probe.getContext("webgl"));
-  } catch {
-    return false;
-  }
-}

@@ -92,24 +92,21 @@ function Film({ photos, state }: Pick<Props, "photos" | "state">) {
     [layout, size.width, size.height],
   );
 
-  // One mesh per photo; rebuilt only when the frame shape or the photos change
-  const pieces = useMemo(() => buildPieces(photos, layout, Math.min(dpr, 2), invalidate), [photos, layout, dpr, invalidate]);
-  useEffect(() => () => pieces.forEach((piece) => piece.dispose()), [pieces]);
-
-  // The meshes the frame loop moves; set once they are in the scene
-  const placed = useRef({ pieces: [] as Piece[] });
+  const placed = useRef<Piece[]>([]);
   useEffect(() => {
     const root = group.current;
-    const store = placed.current;
     if (!root) return;
-    root.add(...pieces.map((piece) => piece.mesh));
-    store.pieces = pieces;
+    const pieces = buildPieces(photos, layout, Math.min(dpr, 2), invalidate);
+    const meshes = pieces.map(piece => piece.mesh);
+    root.add(...meshes);
+    placed.current = pieces;
     invalidate();
     return () => {
-      store.pieces = [];
-      root.remove(...pieces.map((piece) => piece.mesh));
+      placed.current = [];
+      root.remove(...meshes);
+      pieces.forEach(piece => piece.dispose());
     };
-  }, [pieces, invalidate]);
+  }, [photos, layout, dpr, invalidate]);
 
   useFrame((frame) => {
     const { width, height } = frame.size;
@@ -120,7 +117,7 @@ function Film({ photos, state }: Pick<Props, "photos" | "state">) {
     camera.position.set(0, 0, cameraDistance(height));
     camera.lookAt(0, 0, 0);
     camera.updateProjectionMatrix();
-    layPieces(placed.current.pieces, path, layout, live.current);
+    layPieces(placed.current, path, layout, live.current);
   });
 
   return <group ref={group} />;
@@ -148,7 +145,7 @@ function layPieces(pieces: Piece[], path: FilmPath, layout: FilmLayout, { positi
     if (!visible) continue;
     piece.material.uniforms.opacity.value = opacity;
     // Draw the film at the back first, so the film in front blends over it
-    piece.mesh.renderOrder = -center;
+    piece.mesh.renderOrder = -Math.abs(center);
 
     const { positions, tint, blur, fade } = piece;
     for (let i = 0; i <= SEGMENTS; i++) {
@@ -172,7 +169,6 @@ function layPieces(pieces: Piece[], path: FilmPath, layout: FilmLayout, { positi
     }
     const geometry = piece.mesh.geometry;
     for (const name of ["position", "tint", "blur", "fade"]) geometry.attributes[name].needsUpdate = true;
-    geometry.computeBoundingSphere();
   }
 }
 
