@@ -348,33 +348,26 @@ a:focus-visible .btn-arrow[data-dir="down"] {
   opacity: 1;
 }
 .memory-scene { position: absolute; inset: 0; pointer-events: none; }
-.film-window {
-  --film-rail: clamp(12px, 2vw, 28px);
-  --frame-height: 42%;
-  position: absolute; left: 25%; width: min(38%, 50svh); inset-block: 0;
-  transform: translateX(-50%); overflow: hidden;
-}
-.film-frame {
-  position: absolute; left: 50%; top: 50%; width: 100%;
-  height: var(--frame-height); overflow: hidden;
-  border-block: clamp(5px, 1svh, 12px) solid #080808;
-  padding-inline: var(--film-rail);
+/* Without WebGL: the photo in focus, flat, where the 3D film would hold it */
+.film-flat {
+  position: absolute; left: 25%; top: 50%; translate: -50% -50%;
+  width: min(34vw, 58svh); aspect-ratio: 1 / .64; overflow: hidden;
+  border: 3px solid #080808; border-inline-width: 5.5%;
   background: #080808;
 }
-.film-exposure { position: relative; width: 100%; height: 100%; overflow: hidden; }
-.film-frame::before, .film-frame::after {
-  content: ""; position: absolute; z-index: 1; top: 0; bottom: 0; width: clamp(4px, .55vw, 9px);
-  filter: var(--rail-filter, none);
-  background: repeating-linear-gradient(to bottom, transparent 0 6px, #c4c5c6 6px 13px, transparent 13px 20px);
-}
-.film-frame::before { left: 1.6%; } .film-frame::after { right: 1.6%; }
-.film-frame img { object-fit: cover; }
+.film-flat img { width: 100%; height: 100%; object-fit: cover; }
 .film-placeholder { display:grid; height:100%; place-items:center; background:linear-gradient(130deg,#63768a,#273241); color:#cfdae5; font:italic clamp(1rem,4vw,4rem) Georgia,serif; }
 .memory-caption { position:absolute; left:47%; top:50%; width:20%; transform:translateY(-50%); overflow-wrap:anywhere; }
-.memory-caption p:first-child { color:#c8dcff; font-size:clamp(.75rem,1.1vw,1.2rem); }
-.memory-caption p + p { margin-top:.5em; font:italic clamp(1rem,1.9vw,2rem)/1.25 Georgia,serif; }
+.memory-date { color:#c8dcff; font-size:clamp(.75rem,1.1vw,1.2rem); }
+.memory-text { margin-top:.5em; font:italic clamp(1rem,1.9vw,2rem)/1.25 Georgia,serif; }
+/* Phones: the film runs across the top (lib/film-path.ts), the words sit under it, the bear below */
 @media (max-width:767px) {
-  .film-window { width:43%; left:23%; }
-  .film-window { --frame-height: 40%; }
-  .memory-caption { left:47%; width:21%; }
+  .film-flat { left: 50%; top: 27%; width: min(63vw, 30svh); aspect-ratio: 1.5 / 1;
+    border-block-width: max(6px, 1.2svh); border-inline-width: 3px; }
+  .memory-caption {
+    left: 8%; width: 84%; transform: none; text-align: center;
+    top: calc(27% + min(10svh, 21vw) + 1.4rem);
+  }
+  .memory-date { font-size: .8rem; }
+  .memory-text { font-size: clamp(1.05rem, 5vw, 1.4rem); }
 }

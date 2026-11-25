@@ -197,10 +197,10 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
     const seconds = s.startTime < 0 ? -1 : (performance.now() - s.startTime) / 1000;
     // The shape itself only moves with the scroll; its particles never stop
     const finale = 1 - s.morph;
-    const pose = finalePose(width, frame.unit);
-    camera.setViewOffset(width, height, -(pose.x - frame.center.x) * finale, 0, width, height);
+    const pose = finalePose(width, height, frame.unit);
+    camera.setViewOffset(width, height, -(pose.x - frame.center.x) * finale, -(pose.y - frame.center.y) * finale, width, height);
     bear.scale.setScalar(1 + (pose.scale - 1) * finale);
-    bear.rotation.set(s.flip, s.turn + pose.yaw * finale, 0);
+    bear.rotation.set(s.flip + pose.pitch * finale, s.turn + pose.yaw * finale, 0);
     bear.updateMatrixWorld();
     if (seconds < 0) return;
 

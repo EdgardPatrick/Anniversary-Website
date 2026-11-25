@@ -42,8 +42,17 @@ export function pulseAt(seconds: number, period = 4.2) {
   return t * Math.exp(1 - t);
 }
 
-export function finalePose(width: number, unit: number) {
-  const scale = width < 768 ? 0.70 : 1.24;
+/**
+ * Where the bear stands beside the photos, in stage pixels. Desktop: to the right of the film,
+ * turned toward it. Phones: at the bottom under the film and its words, head tipped back to look
+ * up at the photos.
+ */
+export function finalePose(width: number, height: number, unit: number) {
+  if (width < 768) {
+    const scale = 0.62;
+    return { x: width / 2, y: height * 0.85, scale, yaw: -0.2, pitch: -0.62 };
+  }
+  const scale = 1.24;
   const projectedWidth = BEAR_WIDTH * unit * scale;
-  return { x: width - projectedWidth * 0.3, scale, yaw: -Math.PI / 4 };
+  return { x: width - projectedWidth * 0.3, y: height * 0.42, scale, yaw: -Math.PI / 4, pitch: 0 };
 }

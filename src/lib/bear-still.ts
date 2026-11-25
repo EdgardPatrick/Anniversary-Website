@@ -28,18 +28,24 @@ export function drawBearStill(canvas: HTMLCanvasElement, shape: StillShape) {
   clouds ??= { bear: buildBearCloud({ count: COUNT }), heart: buildHeartCloud({ count: COUNT }), bouquet: buildBouquetCloud({ count: COUNT }) };
   const frame = framing(width, height);
   const { positions, colors } = clouds[shape];
-  const pose = finalePose(width, frame.unit);
+  const pose = finalePose(width, height, frame.unit);
   const yaw = shape === "bear" ? pose.yaw : 0;
+  const pitch = shape === "bear" ? pose.pitch : 0;
   const scale = shape === "heart" ? frame.heartHalf / frame.unit : shape === "bouquet" ? frame.bouquetHalf / frame.unit : pose.scale;
   const center = shape === "bouquet" ? frame.bouquetCenter : frame.center;
   const camera = frame.distance;
 
   const projected = Array.from({ length: COUNT }, (_, i) => {
-    const x = (positions[i * 3] * Math.cos(yaw) + positions[i * 3 + 2] * Math.sin(yaw)) * scale;
-    const y = positions[i * 3 + 1] * scale;
-    const z = (positions[i * 3 + 2] * Math.cos(yaw) - positions[i * 3] * Math.sin(yaw)) * scale;
+    // Turned (yaw), then tipped back (pitch), as the live bear is
+    const px = positions[i * 3];
+    const py = positions[i * 3 + 1];
+    const pz = positions[i * 3 + 2];
+    const x = (px * Math.cos(yaw) + pz * Math.sin(yaw)) * scale;
+    const yawZ = pz * Math.cos(yaw) - px * Math.sin(yaw);
+    const y = (py * Math.cos(pitch) - yawZ * Math.sin(pitch)) * scale;
+    const z = (py * Math.sin(pitch) + yawZ * Math.cos(pitch)) * scale;
     const perspective = camera / (camera - z);
-    return { x: (shape === "bear" ? pose.x : center.x) + x * frame.unit * perspective, y: center.y - y * frame.unit * perspective, z, i };
+    return { x: (shape === "bear" ? pose.x : center.x) + x * frame.unit * perspective, y: (shape === "bear" ? pose.y : center.y) - y * frame.unit * perspective, z, i };
   }).sort((a, b) => a.z - b.z);
 
   // Opaque, back to front, so nearer flecks cover farther ones as they do in 3D

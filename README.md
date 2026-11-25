@@ -31,6 +31,7 @@ npm run build
 - `src/lib/bear-particles.ts`: the particle physics, run on the GPU (`GPUComputationRenderer`): launch, gravity, spring home, flow, pointer
 - `src/components/BearStage.tsx`: the React Three Fiber canvas that runs it; `src/lib/bear-scene.ts` holds where the bear and heart sit and how the bear turns
 - `src/lib/bouquet-points.ts`: the final bouquet (sunflower, tulips, greenery, light-blue wrapper, gold twine) as colored points
+- `src/components/FilmRibbon.tsx`: the photo film as a 3D ribbon (React Three Fiber); `src/lib/film-path.ts` holds where it sits and the curve it curls in and out along
 - `src/lib/story.ts`: the scroll story after the bear forms (the greeting leaving, the bear's turn into the heart, I ♥ U · Forever, the flip into the bouquet), as a pure function of scroll position
 - `src/lib/bear-still.ts`: the same bear as a still, for browsers without WebGL
 - `src/lib/motion.ts`: the shared Reduce Motion preference
