@@ -34,7 +34,7 @@ const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
 const smooth = (t: number) => t * t * (3 - 2 * t);
 const span = (progress: number, { from, to }: { from: number; to: number }) => smooth(clamp01((progress - from) / (to - from)));
 
-export interface LineState {
+interface LineState {
   /** 0 hidden → 1 fully shown */
   opacity: number;
   /** 0 settled and readable → 1 fully stretched and rippled */

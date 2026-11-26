@@ -365,7 +365,7 @@ const haloFragment = /* glsl */ `
 
 // ── Setup ───────────────────────────────────────────────────
 
-export interface StepInput {
+interface StepInput {
   time: number;
   delta: number;
   /** Where the confetti leaves the box, in the bear's own space */

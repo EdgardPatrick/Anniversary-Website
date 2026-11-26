@@ -62,16 +62,6 @@ const onStorage = (event: StorageEvent) => {
 };
 
 export const motion = {
-  isReduced,
-
-  setReduced(next: boolean) {
-    choice = next ? "on" : "off";
-    try {
-      localStorage.setItem(STORAGE_KEY, choice);
-    } catch { }
-    emit();
-  },
-
   // For useSyncExternalStore, and for long-lived effects that want to react without re-running
   subscribe(listener: () => void) {
     listeners.add(listener);
@@ -94,5 +84,4 @@ export const motion = {
   getServerSnapshot: () => false,
 };
 
-// Shorthand for code that only needs the current answer at the moment it runs
-export const isReducedMotion = () => motion.isReduced();
+export { isReduced as isReducedMotion };

@@ -4,11 +4,11 @@
 
 export type ScreenPoint = { x: number; y: number };
 
-export const BEAR_HEIGHT = 3.25; // world units, feet to ear tips
-export const BEAR_WIDTH = 1.9;
+const BEAR_HEIGHT = 3.25; // world units, feet to ear tips
+const BEAR_WIDTH = 1.9;
 export const FOV = 32;
 
-export interface Framing {
+interface Framing {
   /** Pixels per world unit at the bear's depth */
   unit: number;
   /** Camera distance, in world units */

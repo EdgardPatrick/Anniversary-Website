@@ -22,7 +22,7 @@ export interface FilmLayout {
   focus: { x: number; y: number };
 }
 
-export const MOBILE_BREAKPOINT = 768;
+const MOBILE_BREAKPOINT = 768;
 
 /** Share of the film's width taken by each sprocket rail */
 export const RAIL = 0.055;

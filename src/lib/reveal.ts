@@ -1,7 +1,7 @@
 // Where the visitor is in the gift's opening, shared by the hero and the content below it.
 // It only moves forward, so repeated taps or key presses can never restart or overlap a stage.
 
-export type RevealStage = "closed" | "opening" | "bear" | "open";
+type RevealStage = "closed" | "opening" | "bear" | "open";
 
 const order: RevealStage[] = ["closed", "opening", "bear", "open"];
 

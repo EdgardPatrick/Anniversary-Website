@@ -21,7 +21,6 @@ export function Filmstrip({ position, entrance, reduced }: { position: number; e
   const index = Math.round(position);
   const photo = memoryPhotos[index];
   const focusOpacity = 1 - Math.min(1, Math.abs(position - index) * 2);
-  const captionOpacity = Math.max(0, (entrance - 0.8) / 0.2) * focusOpacity;
   return (
     // The 3D film stays mounted while the photos are scrolled away and back: unmounting a canvas
     // throws its WebGL context away, and the film would have to be built again each time
@@ -41,11 +40,7 @@ export function Filmstrip({ position, entrance, reduced }: { position: number; e
           <FilmRibbon photos={memoryPhotos} state={{ position, entrance, reduced }} onLost={() => setFlat(true)} />
         </div>
       )}
-      <div className="memory-caption" style={{ opacity: captionOpacity, visibility: hidden ? "hidden" : undefined }}>
-        {photo.alt && <p className="sr-only">{photo.alt}</p>}
-        <p className="memory-date">{photo.date}</p>
-        <p className="memory-text">{photo.description}</p>
-      </div>
+      {photo.alt && <p className="sr-only">{photo.alt}</p>}
     </section>
   );
 }

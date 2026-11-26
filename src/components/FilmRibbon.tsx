@@ -27,7 +27,7 @@ import { loadPhoto } from "@/lib/load-photo";
 import type { MemoryPhoto } from "@/data/memory-photos";
 import { RAIL, buildFilmPath, depthLook, entryOffset, filmLayout, samplePath, type FilmLayout, type FilmPath, type Vec3 } from "@/lib/film-path";
 
-export interface FilmState {
+interface FilmState {
   position: number;
   entrance: number;
   reduced: boolean;

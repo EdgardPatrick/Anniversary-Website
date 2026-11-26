@@ -233,17 +233,8 @@ html[data-reveal="open"] [data-part="box"] {
 }
 .film-flat img { width: 100%; height: 100%; object-fit: cover; }
 .film-placeholder { display:grid; height:100%; place-items:center; background:linear-gradient(130deg,#63768a,#273241); color:#cfdae5; font:italic clamp(1rem,4vw,4rem) Georgia,serif; }
-.memory-caption { position:absolute; left:47%; top:50%; width:20%; transform:translateY(-50%); overflow-wrap:anywhere; }
-.memory-date { color:#c8dcff; font-size:clamp(.75rem,1.1vw,1.2rem); }
-.memory-text { margin-top:.5em; font:italic clamp(1rem,1.9vw,2rem)/1.25 Georgia,serif; }
 /* Phones: the film runs across the top (lib/film-path.ts), the words sit under it, the bear below */
 @media (max-width:767px) {
   .film-flat { left: 50%; top: 27%; width: min(63vw, 30svh); aspect-ratio: 1.5 / 1;
     border-block-width: max(6px, 1.2svh); border-inline-width: 3px; }
-  .memory-caption {
-    left: 8%; width: 84%; transform: none; text-align: center;
-    top: calc(27% + min(10svh, 21vw) + 1.4rem);
-  }
-  .memory-date { font-size: .8rem; }
-  .memory-text { font-size: clamp(1.05rem, 5vw, 1.4rem); }
 }

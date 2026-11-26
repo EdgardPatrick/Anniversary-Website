@@ -1,5 +1,5 @@
 /** Count only recent movement so a long, slow gesture never adds up to a flick. */
-export function photoFlick() {
+function photoFlick() {
   let samples: { delta: number; time: number }[] = [];
   let lastTime = 0;
   let spent = false;
