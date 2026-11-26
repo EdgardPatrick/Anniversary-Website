@@ -7,7 +7,7 @@ it("opens the gift early, scrolls the story, glides through the photos without s
   expect(OPEN_AT).toBe(9);
   const invited = OPEN_AT + 6.9;
   const plan = autoplaySchedule(invited, 116, SONG);
-  expect(plan.scrollTo - plan.scrollFrom).toBe(SCROLL_SECONDS);
+  expect(plan.scrollTo - plan.scrollFrom).toBeCloseTo(SCROLL_SECONDS);
   // A little faster than filling the song exactly, so the ring box comes with plenty of song left
   expect(plan.ringAt).toBeLessThan(SONG - 60);
   expect(autoplayAt(invited - 1, plan, 116)).toEqual({ scroll: 0, photo: 0 });

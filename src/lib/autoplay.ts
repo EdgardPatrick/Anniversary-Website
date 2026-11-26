@@ -10,8 +10,8 @@
 //
 // Times here are positions in the song, so they hold at any playback speed.
 
-/** The song plays this much faster than recorded (its pitch is kept) */
-export const MUSIC_RATE = 1.15;
+/** The song's playback speed: as recorded */
+export const MUSIC_RATE = 1;
 
 /**
  * If the visitor scrolls the photos themselves, the show lets them; once they have left it alone
@@ -31,7 +31,7 @@ export function musicLevel(time: number, duration: number) {
   return Math.min(1, Math.max(0, Math.min(fadeIn, fadeOut)));
 }
 /** How long the slow scroll through the bouquet, heart and bear takes */
-export const SCROLL_SECONDS = 24;
+export const SCROLL_SECONDS = 12;
 /** The film starts gliding this long before the scroll lands, while it is still arriving, so it never stops */
 const GLIDE_LEAD = 1.5;
 /** The glide gathers speed over this long, so its start blends into the film's arrival */

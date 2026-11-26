@@ -59,6 +59,21 @@
   font: 500 clamp(.78rem, 1.8vw, .95rem)/1.4 var(--font-mono), monospace;
   animation: gift-start-in 520ms 120ms ease-out both;
 }
+.gift-start-plain {
+  display: block;
+  margin: 1.4rem auto 0;
+  padding: .25rem .5rem;
+  color: #d4e8ff;
+  font-size: clamp(.95rem, 2.2vw, 1.1rem);
+  text-decoration: underline;
+  text-underline-offset: .25em;
+  text-decoration-thickness: 1px;
+  cursor: pointer;
+  transition: color 200ms ease-out;
+  animation: gift-start-in 520ms 220ms ease-out both;
+}
+.gift-start-plain:hover { color: #fff; text-decoration-thickness: 2px; }
+.gift-start-plain:focus-visible { outline: 2px solid #afd7ff; outline-offset: 4px; border-radius: 4px; }
 @keyframes gift-start-in {
   from { opacity: 0; transform: translateY(10px) scale(.96); }
 }

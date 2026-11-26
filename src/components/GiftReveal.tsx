@@ -75,6 +75,8 @@ export function GiftReveal() {
   const stillShape = useRef<StillShape | null>(null);
   const timers = useRef<number[]>([]);
   const greetingAt = useRef(-1); // when the greeting started to appear, on the performance clock
+  // "Go back up" was pressed: the page is at the top, and the ring box is turning back into the bouquet
+  const returning = useRef(false);
   const [stageMounted, setStageMounted] = useState(false);
   const [status, setStatus] = useState("");
 
@@ -158,6 +160,8 @@ export function GiftReveal() {
   const [landed, setLanded] = useState(false);
   // Once everything has loaded, the loader waits on its Start button; the gift only falls in after it
   const [started, setStarted] = useState(false);
+  // Start plays the whole show by itself; "Continue without auto scroll" leaves it to the visitor
+  const [autoScroll, setAutoScroll] = useState(true);
   // The ring box has opened and the question has been asked: offer to start over
   const [finished, setFinished] = useState(false);
   const intro = loading ? "loading" : !started ? "start" : landed ? "ready" : "arriving";
@@ -295,8 +299,9 @@ export function GiftReveal() {
         const rect = hero.getBoundingClientRect();
         const progress = trackProgress(rect.top, rect.height, window.innerHeight);
         const target = progress * FLIP.to;
-        // A little smoothing so wheel steps glide; reduced motion follows the scroll exactly
-        shown = shown < 0 || reduced ? target : shown + (target - shown) * 0.18;
+        // A little smoothing so wheel steps glide; reduced motion follows the scroll exactly. Going
+        // back up jumps straight to the bouquet, without running the story back through the bear.
+        shown = shown < 0 || reduced || returning.current ? target : shown + (target - shown) * 0.18;
         if (Math.abs(target - shown) < 0.0005) shown = target;
         // The greeting arrives on the clock, as the confetti falls past it, then leaves on the scroll
         const arrival = greetingAt.current < 0 ? 0 : reduced ? 1 : (now - greetingAt.current) / 900;
@@ -308,6 +313,11 @@ export function GiftReveal() {
         const focused = Math.min(photoIndex.current, photoCount - 1);
         ending = advanceEnding(ending, photoIndex.current >= photoCount ? 1 : 0, previousTime ? Math.min(0.1, (now - previousTime) / 1000) : 0);
         const end = endingStory(ending, reduced);
+        // Back at the bouquet: once the ring box has turned back into it, the greeting comes again
+        if (returning.current && end.ring <= 0) {
+          returning.current = false;
+          greetingAt.current = now;
+        }
         const arrivals: Partial<Record<LineKey, number>> = { greeting: arrival, question: end.question };
         for (const key of lineKeys) if (key !== "love") applyLine(key, lineState(shown, lineBeats[key], arrivals[key] ?? 1), now, reduced);
         if (end.question > 0 && !asked) setStatus(question.join(" "));
@@ -603,8 +613,9 @@ export function GiftReveal() {
   }
 
   // Start: the music begins as the gift box falls in, and from here the whole show plays by itself
-  function start() {
+  function start(auto = true) {
     if (started) return;
+    setAutoScroll(auto);
     startedAt.current = performance.now();
     const audio = music.current;
     if (audio && !musicFailed.current) {
@@ -627,21 +638,45 @@ export function GiftReveal() {
     setStarted(true);
   }
 
-  // Back up to the bouquet: the page scrolls smoothly to the top, and the story plays back in reverse
+  // Back to the bouquet: the page goes straight to the top while the ring box is still on screen;
+  // the question fades, the lid closes, the box turns back into the bouquet, and then the greeting
+  // comes again (the story loop plays the ending backwards from here)
   function goBackUp() {
     const hero = heroRef.current;
     if (!hero) return;
-    window.scrollTo({ top: hero.getBoundingClientRect().top + window.scrollY, behavior: "smooth" });
+    returning.current = true;
+    greetingAt.current = -1;
+    setStatus(greeting.title.join(" "));
+    window.scrollTo({ top: hero.getBoundingClientRect().top + window.scrollY, behavior: "instant" });
   }
 
   // The latest open(), for the show's clock to call
   useEffect(() => { openGift.current = open; });
 
-  // The show follows the music's clock: open the gift 4 seconds in, then scroll through the story,
+  // The closed gift, waiting to be opened, gives a little shake
+  const shakeGift = useCallback(() => {
+    stickyRef.current?.querySelectorAll('[data-part="box"]').forEach((box) =>
+      box.animate(
+        [
+          { transform: "none" },
+          { transform: "translateY(-3px) rotate(-3deg)", offset: 0.14 },
+          { transform: "translateY(-2px) rotate(3deg)", offset: 0.3 },
+          { transform: "translateY(-1px) rotate(-2.2deg)", offset: 0.46 },
+          { transform: "rotate(1.4deg)", offset: 0.62 },
+          { transform: "rotate(-0.6deg)", offset: 0.8 },
+          { transform: "none" },
+        ],
+        { duration: 680, easing: "ease-in-out" },
+      ),
+    );
+  }, []);
+
+  // The show follows the music's clock: open the gift at OPEN_AT, then scroll through the story,
   // then bring each photo forward in turn, and finally step on to the ring box
   useEffect(() => {
-    if (!started) return;
+    if (!started || !autoScroll) return;
     const photos = memoryPhotos.length;
+    let lastShake = 0;
     let invitedAt = -1;
     let frame = 0;
     // Where the show picks up again after the visitor has scrolled the photos themselves
@@ -663,6 +698,11 @@ export function GiftReveal() {
       const time = musicTime();
       const stage = reveal.get();
       if (stage === "closed" && time >= OPEN_AT) openGift.current();
+      // Every couple of seconds while it waits, once it has landed and not just before it opens
+      else if (stage === "closed" && time > 2 && time < OPEN_AT - 0.9 && time - lastShake > 2.3) {
+        lastShake = time;
+        if (!isReducedMotion()) shakeGift();
+      }
       if (stage === "open") {
         if (invitedAt < 0) invitedAt = time;
         const duration = musicFailed.current ? NaN : music.current?.duration ?? NaN;
@@ -698,7 +738,7 @@ export function GiftReveal() {
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [started]);
+  }, [started, autoScroll, shakeGift]);
 
   // Fade the song in at its start and out before its end, every time round
   useEffect(() => {
@@ -740,10 +780,13 @@ export function GiftReveal() {
               }}>Try again</button>
             ) : !loading ? (
               <>
-                <button type="button" className="gift-start" onClick={start} disabled={started}>
+                <button type="button" className="gift-start" onClick={() => start()} disabled={started}>
                   Start
                 </button>
                 <p className="gift-start-note">Do not touch anything after starting</p>
+                <button type="button" className="gift-start-plain" onClick={() => start(false)} disabled={started}>
+                  Continue without auto scroll
+                </button>
               </>
             ) : (
               <>

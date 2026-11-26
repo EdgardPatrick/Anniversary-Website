@@ -18,6 +18,7 @@ import {
   DoubleSide,
   Group,
   LinearFilter,
+  LinearMipmapLinearFilter,
   Mesh,
   PerspectiveCamera,
   SRGBColorSpace,
@@ -213,8 +214,9 @@ interface Piece {
   dispose: () => void;
 }
 
-// Sharp and soft copies of the same frame, mixed by how far back the film is. The sharp copy is
-// also read from smaller mipmaps as it softens, so the change is gradual.
+// Sharp and soft copies of the same frame, mixed by how far back the film is. The soft copy is
+// a real (Gaussian) blur of the frame, read a few times around each point so it stays smooth
+// when stretched over a big frame, instead of turning blocky.
 const vertexShader = /* glsl */ `
   attribute vec3 tint;
   attribute float blur;
@@ -246,9 +248,14 @@ const fragmentShader = /* glsl */ `
   varying float vFade;
   varying float vEdge;
   void main() {
-    vec4 sharp = texture2D(map, vUv, vBlur * 4.0);
-    vec4 soft = texture2D(softMap, vUv);
-    vec4 color = mix(sharp, soft, smoothstep(0.1, 0.9, vBlur));
+    vec4 sharp = texture2D(map, vUv, vBlur * 1.5);
+    vec2 r = vec2(0.012, 0.012) * vBlur;
+    vec4 soft = texture2D(softMap, vUv) * 0.28
+      + (texture2D(softMap, vUv + vec2(r.x, 0.0)) + texture2D(softMap, vUv - vec2(r.x, 0.0))
+      + texture2D(softMap, vUv + vec2(0.0, r.y)) + texture2D(softMap, vUv - vec2(0.0, r.y))) * 0.12
+      + (texture2D(softMap, vUv + r) + texture2D(softMap, vUv - r)
+      + texture2D(softMap, vUv + vec2(r.x, -r.y)) + texture2D(softMap, vUv + vec2(-r.x, r.y))) * 0.06;
+    vec4 color = mix(sharp, soft, smoothstep(0.05, 0.6, vBlur));
     float rim = min(vEdge, 1.0 - vEdge);
     float outline = smoothstep(0.0, 0.004 + 0.16 * vBlur, rim);
     gl_FragColor = vec4(color.rgb * vTint, color.a * outline * vFade * opacity);
@@ -333,17 +340,14 @@ function drawFrame(layout: FilmLayout, dpr: number, photo: MemoryPhoto, index: n
   sharp.colorSpace = SRGBColorSpace;
   sharp.anisotropy = 4;
 
-  // The soft copy: the frame shrunk right down, then stretched back over the ribbon by the GPU
-  const small = document.createElement("canvas");
-  small.width = Math.max(8, Math.round(canvas.width / 22));
-  small.height = Math.max(8, Math.round(canvas.height / 22));
-  const middle = document.createElement("canvas");
-  middle.width = Math.round(canvas.width / 4);
-  middle.height = Math.round(canvas.height / 4);
-  const soft = new CanvasTexture(small);
+  // The soft copy: the frame at a quarter size, blurred
+  const blurred = document.createElement("canvas");
+  blurred.width = Math.max(16, Math.round(canvas.width / 4));
+  blurred.height = Math.max(16, Math.round(canvas.height / 4));
+  const soft = new CanvasTexture(blurred);
   soft.colorSpace = SRGBColorSpace;
-  soft.generateMipmaps = false;
-  soft.minFilter = LinearFilter;
+  soft.minFilter = LinearMipmapLinearFilter;
+  soft.magFilter = LinearFilter;
   let cancelled = false;
 
   // Work in film coordinates: x along the film, y across it
@@ -385,8 +389,7 @@ function drawFrame(layout: FilmLayout, dpr: number, photo: MemoryPhoto, index: n
     context.restore();
     context.restore();
 
-    middle.getContext("2d")!.drawImage(canvas, 0, 0, middle.width, middle.height);
-    small.getContext("2d")!.drawImage(middle, 0, 0, small.width, small.height);
+    blurFrame(canvas, blurred);
     sharp.needsUpdate = true;
     soft.needsUpdate = true;
   };
@@ -434,4 +437,59 @@ function drawPhoto(
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText(String(index + 1).padStart(2, "0"), box.x + box.w / 2, box.y + box.h / 2);
+}
+
+const supportsCanvasFilter = (() => {
+  if (typeof document === "undefined") return false;
+  const context = document.createElement("canvas").getContext("2d");
+  if (!context || !("filter" in context)) return false;
+  context.filter = "blur(2px)";
+  return context.filter === "blur(2px)";
+})();
+
+/**
+ * Draws `source` into `target` (smaller), blurred smoothly. Uses the canvas's own Gaussian blur where
+ * the browser has it; otherwise blurs by scaling down and back up in gentle steps, which also
+ * stays smooth. The unblurred frame is laid underneath, so the blur never fades out at the edges.
+ */
+function blurFrame(source: HTMLCanvasElement, target: HTMLCanvasElement) {
+  const context = target.getContext("2d")!;
+  const { width, height } = target;
+  context.clearRect(0, 0, width, height);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  const radius = Math.max(2, Math.min(width, height) * 0.045);
+  if (supportsCanvasFilter) {
+    context.filter = `blur(${radius.toFixed(1)}px)`;
+    context.drawImage(source, 0, 0, width, height);
+    context.filter = "none";
+  } else {
+    let from: HTMLCanvasElement = source;
+    let w = width;
+    let h = height;
+    const steps: HTMLCanvasElement[] = [];
+    // Down by halves to about a sixth, then back up by doubles: each step is a small, smooth blur
+    for (let i = 0; i < 3; i++) {
+      w = Math.max(4, Math.round(w / 2));
+      h = Math.max(4, Math.round(h / 2));
+      const step = document.createElement("canvas");
+      step.width = w;
+      step.height = h;
+      const c = step.getContext("2d")!;
+      c.imageSmoothingQuality = "high";
+      c.drawImage(from, 0, 0, w, h);
+      steps.push(step);
+      from = step;
+    }
+    for (let i = steps.length - 2; i >= 0; i--) {
+      const c = steps[i].getContext("2d")!;
+      c.imageSmoothingQuality = "high";
+      c.drawImage(from, 0, 0, steps[i].width, steps[i].height);
+      from = steps[i];
+    }
+    context.drawImage(from, 0, 0, width, height);
+  }
+  context.globalCompositeOperation = "destination-over";
+  context.drawImage(source, 0, 0, width, height);
+  context.globalCompositeOperation = "source-over";
 }
