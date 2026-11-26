@@ -2,6 +2,8 @@
 // particles (components/BearStage.tsx), the text overlay (components/GiftReveal.tsx) and the still
 // fallback (lib/bear-still.ts). No three.js here, so the overlay and the still never load it.
 
+import { filmLayout } from "@/lib/film-layout";
+
 export type ScreenPoint = { x: number; y: number };
 
 const BEAR_HEIGHT = 3.25; // world units, feet to ear tips
@@ -79,4 +81,23 @@ export function ringBoxFrame(width: number, height: number) {
     (height * 0.26) / (RING_BOX_EXTENT.bottom * unit),
   );
   return { scale, center, wordsTop: center.y + RING_BOX_EXTENT.bottom * unit * scale + 12 };
+}
+
+/**
+ * The space between the photo film and the bear, once both are in place, for the "I love you"
+ * lines: its center and width, in stage pixels. Desktop: between the film on the left and the bear
+ * on the right. Phones: between the film across the top and the bear at the bottom.
+ */
+export function loveSpace(width: number, height: number) {
+  const film = filmLayout(width, height);
+  const { unit } = framing(width, height);
+  const pose = finalePose(width, height, unit);
+  if (film.vertical) {
+    const left = film.focus.x + film.across / 2;
+    const right = pose.x - BEAR_WIDTH * unit * pose.scale * 0.42;
+    return { x: (left + right) / 2, y: height * 0.45, width: Math.max(160, right - left - 32) };
+  }
+  const top = film.focus.y + film.across / 2;
+  const bottom = pose.y - BEAR_HEIGHT * unit * pose.scale * 0.5;
+  return { x: width / 2, y: (top + bottom) / 2, width: width - 32 };
 }

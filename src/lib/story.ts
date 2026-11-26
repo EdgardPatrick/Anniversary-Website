@@ -27,6 +27,8 @@ export const beats = {
   forever: heartWords,
   // Arrives on the ending's clock as the ring box opens (see endingStory), and stays
   question: { enter: -Infinity, exit: Infinity },
+  // Follows the film instead (see loveLine)
+  love: { enter: -Infinity, exit: Infinity },
 } satisfies Record<string, Beat>;
 
 /** Share of the track a line spends rippling in, and again rippling out */
@@ -84,7 +86,7 @@ export function trackProgress(top: number, height: number, viewport: number) {
  * the film rises away, the bear walks back to the middle and becomes a closed ring box, the box
  * holds still for a breath, then the lid lifts, the ring rises, and the question arrives as it does.
  */
-export const ENDING_SECONDS = 5.6;
+export const ENDING_SECONDS = 8.5;
 const FILM_LEAVES = { from: 0, to: 0.3 };
 const BEAR_CENTERS = { from: 0.06, to: 0.4 };
 const BECOMES_BOX = { from: 0.12, to: 0.5 };
@@ -110,4 +112,18 @@ export function endingStory(ending: number, reducedMotion: boolean) {
 export function advanceEnding(ending: number, headed: 0 | 1, seconds: number) {
   const step = (seconds / ENDING_SECONDS) * (headed ? 1 : 2);
   return headed ? Math.min(1, ending + step) : Math.max(0, ending - step);
+}
+
+/** Photos the film glides past while one "I love you" is shown, at the least */
+export const PHOTOS_PER_LOVE = 4;
+
+/**
+ * Which "I love you" shows beside the film at film position `position` (in photos), and how far
+ * it is through its arrival and departure, as the other lines do. With `photos` photos, the
+ * languages are spread so each comes once along the film (going round again on a short film).
+ */
+export function loveLine(position: number, count: number, photos = 0) {
+  const span = Math.max(0, position) / Math.max(PHOTOS_PER_LOVE, photos / count);
+  const index = Math.floor(span) % count;
+  return { index, ...lineState(span - Math.floor(span), { enter: 0, exit: 1 - RAMP }) };
 }

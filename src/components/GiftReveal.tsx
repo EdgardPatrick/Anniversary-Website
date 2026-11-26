@@ -16,20 +16,20 @@ import {
   walls,
   type Point,
 } from "@/lib/gift-box";
-import { framing, ringBoxFrame, type ScreenPoint } from "@/lib/bear-scene";
+import { framing, loveSpace, ringBoxFrame, type ScreenPoint } from "@/lib/bear-scene";
 import type { BearStageHandle } from "@/components/BearStage";
 import type { StillShape } from "@/lib/bear-still";
 import { supportsWebGL } from "@/lib/webgl";
 import { listenForPhotoGestures } from "@/lib/photo-navigation";
 import { isReducedMotion } from "@/lib/motion";
 import { reveal } from "@/lib/reveal";
-import { FLIP, TRACK_SCREENS, advanceEnding, beats, bloomAt, endingStory, lineState, particleStory, trackProgress, type Beat } from "@/lib/story";
+import { FLIP, TRACK_SCREENS, advanceEnding, beats, bloomAt, endingStory, lineState, loveLine, particleStory, trackProgress, type Beat } from "@/lib/story";
 import { useReducedMotion, useRevealStage } from "@/lib/use-preferences";
-import { HAND_BACK_SECONDS, MUSIC_RATE, OPEN_AT, autoplayAt, autoplaySchedule, photoAfterHandBack } from "@/lib/autoplay";
+import { HAND_BACK_SECONDS, MUSIC_RATE, OPEN_AT, autoplayAt, autoplaySchedule, musicLevel, photoAfterHandBack } from "@/lib/autoplay";
 
 const MUSIC = "/anniversary.m4a";
 
-const { greeting, finale, question } = anniversary;
+const { greeting, finale, question, loveYou } = anniversary;
 
 // The live particles (React Three Fiber). Their code loads only when prepare() mounts them;
 // if the chunk can't load, the stage reports "no WebGL" and the still bear is drawn instead.
@@ -45,7 +45,7 @@ const BearStage = dynamic(
 );
 
 type Renderer = "pending" | "webgl" | "still";
-type LineKey = "greeting" | "i" | "u" | "forever" | "question";
+type LineKey = "greeting" | "i" | "u" | "forever" | "question" | "love";
 
 const lineBeats: Record<LineKey, Beat> = beats;
 const lineKeys = Object.keys(lineBeats) as LineKey[];
@@ -162,6 +162,8 @@ export function GiftReveal() {
   const [finished, setFinished] = useState(false);
   const intro = loading ? "loading" : !started ? "start" : landed ? "ready" : "arriving";
   const music = useRef<HTMLAudioElement | null>(null);
+  // The song's volume, through Web Audio where it can (phones ignore an audio element's volume)
+  const fader = useRef<{ context: AudioContext; gain: GainNode } | null>(null);
   const musicFailed = useRef(false);
   const startedAt = useRef(-1);
   const openGift = useRef<() => void>(() => { });
@@ -242,6 +244,13 @@ export function GiftReveal() {
       if (words) words.top = `${frame.bouquetCenter.y + frame.bouquetHalf + 14}px`;
       const asked = slot("question");
       if (asked) asked.top = `${ringBoxFrame(width, sticky.clientHeight).wordsTop}px`;
+      const love = slot("love");
+      if (love) {
+        const space = loveSpace(width, sticky.clientHeight);
+        love.left = `${space.x}px`;
+        love.top = `${space.y}px`;
+        love.width = `${space.width}px`;
+      }
       if (renderer.current === "still" && stillShape.current) {
         const shape = stillShape.current;
         stillShape.current = null;
@@ -277,6 +286,9 @@ export function GiftReveal() {
     let ending = 0; // the ending's clock, 0 → 1 (see endingStory)
     let lastLeave = -1;
     let asked = false;
+    let shownLove = 0;
+    const loveText = sticky.querySelector<HTMLElement>("[data-love-text]");
+    const loveLanguage = sticky.querySelector<HTMLElement>("[data-love-language]");
     const tick = (now: number) => {
       const hero = heroRef.current;
       if (hero) {
@@ -297,7 +309,7 @@ export function GiftReveal() {
         ending = advanceEnding(ending, photoIndex.current >= photoCount ? 1 : 0, previousTime ? Math.min(0.1, (now - previousTime) / 1000) : 0);
         const end = endingStory(ending, reduced);
         const arrivals: Partial<Record<LineKey, number>> = { greeting: arrival, question: end.question };
-        for (const key of lineKeys) applyLine(key, lineState(shown, lineBeats[key], arrivals[key] ?? 1), now, reduced);
+        for (const key of lineKeys) if (key !== "love") applyLine(key, lineState(shown, lineBeats[key], arrivals[key] ?? 1), now, reduced);
         if (end.question > 0 && !asked) setStatus(question.join(" "));
         setFinished(ending >= 1);
         asked = end.question > 0;
@@ -306,6 +318,15 @@ export function GiftReveal() {
         const position = Math.abs(next - focused) < 0.001 ? focused : next;
         previousTime = now;
         const story = particleStory(shown, reduced);
+        // "I love you" in one language after another, between the bear and the film while it is in place
+        const love = loveLine(position, loveYou.length, photoCount);
+        if (love.index !== shownLove && loveText && loveLanguage) {
+          shownLove = love.index;
+          loveText.textContent = loveYou[love.index].text;
+          loveLanguage.textContent = loveYou[love.index].language;
+        }
+        const filmIn = Math.min(1, Math.max(0, (1 - story.morph - 0.85) / 0.15)) * (1 - Math.min(1, end.film * 4));
+        applyLine("love", { opacity: love.opacity * filmIn, distort: love.distort }, now, reduced);
         if (lastFilmProgress !== shown || position !== photoPosition || lastLeave !== end.film) {
           photoPosition = position;
           setFilm({ position, entrance: 1 - story.morph, leave: end.film, reduced });
@@ -590,6 +611,17 @@ export function GiftReveal() {
       audio.currentTime = 0;
       audio.playbackRate = MUSIC_RATE;
       audio.preservesPitch = true;
+      audio.loop = true;
+      try {
+        const context = new AudioContext();
+        const gain = context.createGain();
+        gain.gain.value = 0;
+        context.createMediaElementSource(audio).connect(gain).connect(context.destination);
+        void context.resume();
+        fader.current = { context, gain };
+      } catch {
+        audio.volume = 0;
+      }
       audio.play().catch(() => { musicFailed.current = true; });
     } else musicFailed.current = true;
     setStarted(true);
@@ -616,10 +648,16 @@ export function GiftReveal() {
     let handBack: { photo: number; at: number } | null = null;
     let handedBackAt = -Infinity;
     let landed = false; // the scroll has reached the bottom, and the page is the visitor's again
+    // The song loops: count each time round, so the show's clock keeps going forward
+    let rounds = 0;
+    let lastRaw = 0;
     const musicTime = () => {
       const audio = music.current;
       const playing = audio && !musicFailed.current && !audio.error && (audio.currentTime > 0 || !audio.paused);
-      return playing ? audio.currentTime : ((performance.now() - startedAt.current) / 1000) * MUSIC_RATE;
+      if (!playing) return ((performance.now() - startedAt.current) / 1000) * MUSIC_RATE;
+      if (audio.currentTime + 1 < lastRaw && Number.isFinite(audio.duration)) rounds++;
+      lastRaw = audio.currentTime;
+      return audio.currentTime + rounds * (Number.isFinite(audio.duration) ? audio.duration : 0);
     };
     const tick = () => {
       const time = musicTime();
@@ -660,6 +698,20 @@ export function GiftReveal() {
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
+  }, [started]);
+
+  // Fade the song in at its start and out before its end, every time round
+  useEffect(() => {
+    if (!started) return;
+    const timer = window.setInterval(() => {
+      const audio = music.current;
+      if (!audio) return;
+      const level = musicLevel(audio.currentTime, audio.duration);
+      const fade = fader.current;
+      if (fade) fade.gain.gain.setTargetAtTime(level, fade.context.currentTime, 0.06);
+      else audio.volume = level;
+    }, 50);
+    return () => window.clearInterval(timer);
   }, [started]);
 
   // Stop the music if the page goes away
@@ -753,6 +805,12 @@ export function GiftReveal() {
             <span data-line="u" aria-hidden="true" className="block font-serif heart-letter leading-none text-foreground" style={hiddenLine("left center")}>
               {finale.right}
             </span>
+          </div>
+          <div data-slot="love" aria-hidden="true" className="absolute -translate-x-1/2 -translate-y-1/2 text-center" style={{ left: "50%", top: "45%" }}>
+            <p data-line="love" className="font-serif text-[clamp(2.2rem,min(4.6vw,8svh),4.5rem)] leading-[1.05] italic" style={hiddenLine("center center")}>
+              <span data-love-text className="block">{loveYou[0].text}</span>
+              <span data-love-language className="mt-3 block font-mono text-[clamp(0.65rem,1.2vw,0.8rem)] not-italic uppercase tracking-[0.3em] text-muted">{loveYou[0].language}</span>
+            </p>
           </div>
           <div data-slot="question" className="absolute inset-x-4 text-center" style={{ top: "75%" }}>
             <p data-line="question" className="text-[clamp(1.9rem,min(5.4vw,7svh),4.2rem)] font-bold leading-[0.95] tracking-[-0.04em]" style={hiddenLine("center top")}>

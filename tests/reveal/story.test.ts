@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BLOOM, FLIP, MORPH, TURN, advanceEnding, beats, endingStory, bloomAt, flipAt, lineState, morphAt, particleStory, trackProgress, turnAt } from "@/lib/story";
+import { BLOOM, FLIP, MORPH, PHOTOS_PER_LOVE, TURN, advanceEnding, beats, endingStory, loveLine, bloomAt, flipAt, lineState, morphAt, particleStory, trackProgress, turnAt } from "@/lib/story";
 import { buildBouquetCloud } from "@/lib/bouquet-points";
 import { framing, pulseAt } from "@/lib/bear-scene";
 import { buildHeartCloud } from "@/lib/bear-points";
@@ -169,5 +169,20 @@ describe("ending", () => {
     expect(endingStory(0.01, true).lid).toBe(1);
     expect(advanceEnding(0.99, 1, 1)).toBe(1);
     expect(advanceEnding(0.01, 0, 1)).toBe(0);
+  });
+});
+
+describe("I love you, beside the film", () => {
+  it("starts with the first language as the film arrives, moves on as it glides, and goes round again", () => {
+    expect(loveLine(0, 5).index).toBe(0);
+    expect(loveLine(0, 5).opacity).toBe(0);
+    const settled = loveLine(PHOTOS_PER_LOVE * 0.5, 5);
+    expect(settled).toEqual({ index: 0, opacity: 1, distort: 0 });
+    expect(loveLine(PHOTOS_PER_LOVE * 0.999, 5).opacity).toBeLessThan(0.1);
+    expect(loveLine(PHOTOS_PER_LOVE * 1.5, 5).index).toBe(1);
+    expect(loveLine(PHOTOS_PER_LOVE * 5.5, 5).index).toBe(0);
+    // A long film: each language once, the last one near the end
+    expect(loveLine(0, 21, 116).index).toBe(0);
+    expect(loveLine(114, 21, 116).index).toBe(20);
   });
 });

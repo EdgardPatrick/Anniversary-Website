@@ -2,7 +2,7 @@
 // the gift, the scroll, the photos and the ring box stay in time with the song even if it buffers.
 //
 // 0 s     the music starts as the gift box falls in
-// 4 s     the gift opens
+// 9 s     the gift opens
 // then    once the bear invites the scroll, the page scrolls slowly through the story, and lets go
 //         of the page once it reaches the bottom
 // then    the film glides steadily through the photos, already moving as the strip arrives
@@ -19,7 +19,17 @@ export const MUSIC_RATE = 1.15;
  */
 export const HAND_BACK_SECONDS = 5;
 /** Seconds into the music when the gift opens */
-export const OPEN_AT = 4;
+export const OPEN_AT = 9;
+/** The song fades in over this long at its start, and out over this long before its end, each time round (music seconds) */
+export const FADE_IN = 3;
+export const FADE_OUT = 4;
+
+/** How loud the song should be at music time `time` (within one play-through), 0 → 1 */
+export function musicLevel(time: number, duration: number) {
+  const fadeIn = time / FADE_IN;
+  const fadeOut = Number.isFinite(duration) ? (duration - time) / FADE_OUT : 1;
+  return Math.min(1, Math.max(0, Math.min(fadeIn, fadeOut)));
+}
 /** How long the slow scroll through the bouquet, heart and bear takes */
 export const SCROLL_SECONDS = 24;
 /** The film starts gliding this long before the scroll lands, while it is still arriving, so it never stops */
@@ -31,7 +41,7 @@ const LAST_PHOTO_REST = 1.5;
 /** Music left to play under the ring box and the question, at the slowest pace */
 const ENDING_RESERVE = 30;
 /** The glide runs this much faster than the pace that would exactly fill the song */
-const PACE = 1.25;
+const PACE = 1.6;
 const PHOTO_SECONDS = { min: 1.4, max: 5, fallback: 3.2 };
 
 export interface AutoplaySchedule {

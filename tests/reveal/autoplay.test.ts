@@ -1,10 +1,10 @@
 import { expect, it } from "vitest";
-import { OPEN_AT, SCROLL_SECONDS, autoplayAt, autoplaySchedule, photoAfterHandBack } from "@/lib/autoplay";
+import { OPEN_AT, SCROLL_SECONDS, autoplayAt, autoplaySchedule, musicLevel, photoAfterHandBack } from "@/lib/autoplay";
 
 const SONG = 579.92;
 
 it("opens the gift early, scrolls the story, glides through the photos without stopping, and ends on the ring box", () => {
-  expect(OPEN_AT).toBe(4);
+  expect(OPEN_AT).toBe(9);
   const invited = OPEN_AT + 6.9;
   const plan = autoplaySchedule(invited, 116, SONG);
   expect(plan.scrollTo - plan.scrollFrom).toBe(SCROLL_SECONDS);
@@ -40,4 +40,13 @@ it("glides on from wherever the visitor left the film", () => {
   expect(photoAfterHandBack(100 + plan.perPhoto * 75 + 1 + 0.5, plan, 116, from)).toBe(115); // resting on the last photo
   expect(photoAfterHandBack(10_000, plan, 116, from)).toBe(116);
   expect(photoAfterHandBack(100, plan, 116, { photo: 116, at: 100 })).toBe(116);
+});
+
+it("fades the song in at its start and out before its end", () => {
+  expect(musicLevel(0, SONG)).toBe(0);
+  expect(musicLevel(1.5, SONG)).toBeCloseTo(0.5);
+  expect(musicLevel(100, SONG)).toBe(1);
+  expect(musicLevel(SONG - 2, SONG)).toBeCloseTo(0.5);
+  expect(musicLevel(SONG, SONG)).toBe(0);
+  expect(musicLevel(100, NaN)).toBe(1);
 });
