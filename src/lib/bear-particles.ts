@@ -13,6 +13,8 @@
 //    at its own moment, with a swirl along the way.
 // 4. The bouquet. Scrolling on, each home slides again, to its place in the bouquet, and the
 //    particle takes on that place's color.
+// 5. The ring box. After the photos, each home slides once more, into a closed ring box covered in
+//    beads; then the lid's points turn about its hinge and the ring's points rise out of hiding.
 // The pointer pushes, drags and lights up nearby particles at every stage; a tap sends out a ring.
 
 import {
@@ -33,6 +35,7 @@ import {
 import { GPUComputationRenderer } from "three/addons/misc/GPUComputationRenderer.js";
 import { seededRandom, type BearCloud, type HeartCloud } from "@/lib/bear-points";
 import type { BouquetCloud } from "@/lib/bouquet-points";
+import { RING_BOX_CENTER, RING_BOX_HINGE, RING_BOX_OPEN_ANGLE, RING_BOX_VIEW, type RingBoxCloud } from "@/lib/ring-box-points";
 
 const GRAVITY = 9;
 
@@ -50,6 +53,11 @@ const homeChunk = /* glsl */ `
   uniform float uBouquetScale;
   uniform vec3 uBouquetOffset;
   uniform float uBeat;
+  uniform sampler2D tRingBox;    // xyz: place in the ring box (lid closed, ring shown), w: its part (0 base, 1 lid, 2 ring)
+  uniform sampler2D tRingHidden; // xyz: where a ring point waits inside the closed box
+  uniform float uRing;       // bear → ring box
+  uniform float uLid;        // the lid: 0 closed → 1 open
+  uniform float uRingScale;
 
   float stagger(vec2 uv, float amount) {
     float start = texture2D(tLaunch, uv).w;
@@ -57,13 +65,44 @@ const homeChunk = /* glsl */ `
   }
   float morphOf(vec2 uv) { return stagger(uv, uMorph); }
   float bloomOf(vec2 uv) { return stagger(uv, uBloom); }
+  float ringOf(vec2 uv) { return stagger(uv, uRing); }
+  // A ring point rises out of hiding while the lid is lifting, each at its own moment
+  float riseOf(vec2 uv) {
+    float start = 0.3 + texture2D(tLaunch, uv).w * 0.5;
+    return smoothstep(start, start + 0.3, uLid);
+  }
+
+  vec3 ringBoxOf(vec2 uv) {
+    vec4 rb = texture2D(tRingBox, uv);
+    vec3 p = rb.xyz;
+    if (rb.w > 1.5) {
+      p = mix(texture2D(tRingHidden, uv).xyz, p, riseOf(uv));
+    } else if (rb.w > 0.5) {
+      // The lid turns back about its hinge, with a little overshoot as it settles open
+      float open = uLid + 0.06 * sin(3.14159 * uLid);
+      float a = -open * ${RING_BOX_OPEN_ANGLE.toFixed(3)};
+      float dy = p.y - ${RING_BOX_HINGE.y.toFixed(3)};
+      float dz = p.z - (${RING_BOX_HINGE.z.toFixed(3)});
+      p.y = ${RING_BOX_HINGE.y.toFixed(3)} + dy * cos(a) - dz * sin(a);
+      p.z = ${RING_BOX_HINGE.z.toFixed(3)} + dy * sin(a) + dz * cos(a);
+    }
+    // Seen from a little above and to the side
+    float cp = cos(${RING_BOX_VIEW.pitch.toFixed(3)});
+    float sp = sin(${RING_BOX_VIEW.pitch.toFixed(3)});
+    p = vec3(p.x, p.y * cp - p.z * sp, p.y * sp + p.z * cp);
+    float cy = cos(${RING_BOX_VIEW.yaw.toFixed(3)});
+    float sy = sin(${RING_BOX_VIEW.yaw.toFixed(3)});
+    p = vec3(p.x * cy + p.z * sy, p.y, -p.x * sy + p.z * cy);
+    return (p + vec3(${RING_BOX_CENTER.map((v) => v.toFixed(3)).join(", ")})) * uRingScale;
+  }
 
   vec3 homeOf(vec2 uv, vec4 info, float m, float b) {
     vec3 bear = texture2D(tBear, uv).xyz;
     bear = mix(bear, uHeartCenter + (bear - uHeartCenter) * (1.0 + 0.20 * uBeat), info.z);
     vec3 heart = texture2D(tHeart, uv).xyz * uHeartScale * (1.0 + 0.24 * uBeat * (1.0 - b));
     vec3 bouquet = uBouquetOffset + texture2D(tBouquet, uv).xyz * uBouquetScale;
-    return mix(mix(bear, heart, m), bouquet, b);
+    vec3 home = mix(mix(bear, heart, m), bouquet, b);
+    return uRing > 0.0 ? mix(home, ringBoxOf(uv), ringOf(uv)) : home;
   }
 `;
 
@@ -127,6 +166,7 @@ const velocityShader = /* glsl */ `
     }
     float m = morphOf(uv);
     float b = bloomOf(uv);
+    float rb = ringOf(uv);
     vec3 home = homeOf(uv, info, m, b);
 
     float caught = smoothstep(apexTime * 0.8, apexTime + 1.5, age);
@@ -135,6 +175,8 @@ const velocityShader = /* glsl */ `
     // ...scaled to the heart's size once it is the heart, so a small (phone) heart keeps its shape
     float edge = mix(texture2D(tBear, uv).w, texture2D(tHeart, uv).w * 0.6 * min(1.0, uHeartScale / 1.25), m);
     edge = mix(edge, texture2D(tBouquet, uv).w * 0.4, b);
+    // The ring box keeps crisp edges, so its lid and the ring read clearly
+    edge = mix(edge, 0.06, rb);
     home += vec3(
       sin(uTime * (1.1 + seed) + seed * 31.0),
       cos(uTime * (0.9 + seed * 0.7) + seed * 17.0),
@@ -142,7 +184,7 @@ const velocityShader = /* glsl */ `
     ) * (0.012 + 0.02 * fract(seed * 7.1) + 0.07 * edge) * caught;
     if (fract(seed * 91.7) < 0.05 + 0.3 * edge) {
       vec3 outward = normalize(vec3(home.xy, 0.3 * home.z) + 0.0001);
-      float reachOut = mix(0.45, 0.22 * min(1.0, uHeartScale / 1.25), m) * (0.4 + 0.6 * fract(seed * 13.3));
+      float reachOut = mix(0.45, 0.22 * min(1.0, uHeartScale / 1.25), m) * (0.4 + 0.6 * fract(seed * 13.3)) * (1.0 - 0.7 * rb);
       home += outward * reachOut * pow(0.5 + 0.5 * sin(uTime * (0.45 + 0.4 * fract(seed * 5.7)) + seed * 60.0), 3.0) * caught;
     }
     vec3 acc = vec3(0.0, -${GRAVITY.toFixed(1)} * (1.0 - caught), 0.0);
@@ -154,13 +196,15 @@ const velocityShader = /* glsl */ `
     vec3 bearHome = texture2D(tBear, uv).xyz;
     vec3 heartHome = texture2D(tHeart, uv).xyz;
     float rim = mix(length((bearHome - uHeartCenter).xy) / 0.45, length(heartHome.xy), m);
-    float heartness = max(info.z, m) * (1.0 - b);
+    float heartness = max(info.z, m) * (1.0 - b) * (1.0 - rb);
     float drift = caught * (0.12 + heartness * smoothstep(0.55, 1.0, rim) * mix(1.1, 0.5, m) + edge * 1.2);
     vec3 r = pos - mix(uHeartCenter, vec3(0.0), m);
     vec3 around = normalize(vec3(-r.y, r.x, 0.0) + 0.0001);
     acc += (flow(pos * 2.2, uTime * 0.7) * 0.7 + around * 0.6) * drift;
     // Swirl in transit between bear and heart
-    acc += (flow(pos * 1.4, uTime * 1.3) * 2.2 + around * 1.6) * (sin(3.14159 * m) + sin(3.14159 * b));
+    acc += (flow(pos * 1.4, uTime * 1.3) * 2.2 + around * 1.6) * (sin(3.14159 * m) + sin(3.14159 * b) + sin(3.14159 * rb));
+    // The ring's points sparkle up out of the box in a little swirl
+    if (texture2D(tRingBox, uv).w > 1.5) acc += flow(pos * 3.0, uTime * 2.0) * 1.6 * sin(3.14159 * riseOf(uv)) * rb;
 
     float stiffness = mix(0.0, 44.0, caught * caught) * (1.0 - 0.5 * heartness * smoothstep(0.6, 1.0, rim)) * (1.0 - 0.55 * edge);
     acc += (home - pos) * stiffness;
@@ -253,11 +297,16 @@ const pointsVertex = /* glsl */ `
   uniform float uBloom;
   uniform float uBouquetScale;
   uniform float uBeat;
+  uniform float uRing;
+  uniform float uLid;
   attribute vec2 aRef;
   attribute float aConfetti;
   attribute vec3 aColor;
   attribute vec3 aHeartColor;
   attribute vec3 aBouquetColor;
+  attribute vec3 aRingColor;
+  attribute float aRingPart;
+  attribute float aRingSize;
   attribute float aSize;
   attribute float aHeart;
   attribute float aSeed;
@@ -281,16 +330,24 @@ const pointsVertex = /* glsl */ `
     float start = texture2D(tLaunch, aRef).w;
     float m = smoothstep(start, start + 0.5, uMorph);
     float b = smoothstep(start, start + 0.5, uBloom);
+    float r = smoothstep(start, start + 0.5, uRing);
+    float isRing = step(1.5, aRingPart);
+    float risen = smoothstep(0.3 + start * 0.5, 0.6 + start * 0.5, uLid);
     // The beads scale with the bouquet's size against the bear's, so it stays as densely packed
     float bouquetGrowth = clamp(uBouquetScale * 2.0 / 3.25, 0.85, 1.6);
-    gl_PointSize = (aConfetti > 0.5 ? uConfettiSize : aSize * uSizeScale * (1.0 + 0.7 * glow) * mix(1.0, bouquetGrowth, b)) * uPointScale / -mvPosition.z;
+    float ringSize = mix(1.0, aRingSize, r);
+    gl_PointSize = (aConfetti > 0.5 ? uConfettiSize : aSize * uSizeScale * (1.0 + 0.7 * glow) * mix(1.0, bouquetGrowth, b) * ringSize) * uPointScale / -mvPosition.z;
     vec3 color = mix(mix(aColor, aHeartColor, m), aBouquetColor, b);
+    // In the ring box; the ring's points stay box-blue while hidden and turn silver as they rise
+    vec3 ringColor = mix(aRingColor, mix(vec3(0.06, 0.14, 0.62), aRingColor, risen), isRing);
+    color = mix(color, ringColor, r);
     // Heartbeat: the heart's particles swell toward paler blues for a moment
-    color = mix(color, vec3(0.62, 0.8, 1.0), max(aHeart, m) * (1.0 - b) * uBeat * 0.55);
+    color = mix(color, vec3(0.62, 0.8, 1.0), max(aHeart, m) * (1.0 - b) * (1.0 - r) * uBeat * 0.55);
     // Lit by the pointer: brighter and paler
     color = mix(color, vec3(0.8, 0.94, 1.0), glow * 0.75) * (1.0 + 0.9 * glow);
     // Glitter: now and then a fleck catches the light
-    float glint = pow(max(0.0, sin(uTime * (1.2 + aSeed * 2.6) + aSeed * 97.0)), 60.0);
+    // ...and the ring's stone and band catch it far more often
+    float glint = pow(max(0.0, sin(uTime * (1.2 + aSeed * 2.6) + aSeed * 97.0)), mix(60.0, 8.0, isRing * r * risen));
     vColor = mix(color, vec3(0.92, 0.96, 1.0), glint * (1.0 - aConfetti) * 0.9);
 
     // Fast flecks flatten into tumbling slivers; paper confetti always tumbles
@@ -380,6 +437,10 @@ interface StepInput {
   bouquetScale: number;
   /** Where the bouquet's center sits, in the bear's own space */
   bouquetOffset: Vector3;
+  /** bear → ring box (0 → 1), its lid (0 closed → 1 open), and its size against the bear */
+  ring: number;
+  lid: number;
+  ringScale: number;
   beat: number;
   rayOrigin: Vector3;
   rayDir: Vector3;
@@ -456,6 +517,7 @@ export function createBearParticles(
   bear: BearCloud,
   heart: HeartCloud,
   bouquet: BouquetCloud,
+  ringBox: RingBoxCloud,
   confetti: number,
 ): BearParticles | null {
   const total = bear.count + confetti;
@@ -475,6 +537,10 @@ export function createBearParticles(
   const bouquetOrder = byHeight(bouquet.positions);
   const bouquetIndex = new Uint32Array(bear.count);
   bearOrder.forEach((b, rank) => (bouquetIndex[b] = bouquetOrder[rank]));
+  // By height as the closed box stands, so the bear's head becomes the lid
+  const ringOrder = byHeight(ringBox.closed);
+  const ringIndex = new Uint32Array(bear.count);
+  bearOrder.forEach((b, rank) => (ringIndex[b] = ringOrder[rank]));
 
   const bearEdge = outlineNearness(bear.positions, bear.count, 0.04);
   const heartEdge = outlineNearness(heart.positions, bear.count, 0.03);
@@ -492,6 +558,11 @@ export function createBearParticles(
   colors.set(bear.colors);
   const heartColors = new Float32Array(total * 3);
   const bouquetColors = new Float32Array(total * 3);
+  const ringHome = new Float32Array(texels * 4);
+  const ringHidden = new Float32Array(texels * 4);
+  const ringColors = new Float32Array(total * 3);
+  const ringParts = new Float32Array(total);
+  const ringSizes = new Float32Array(total).fill(1);
   const sizes = new Float32Array(total);
   sizes.set(bear.sizes);
   const inHeartFlags = new Float32Array(total);
@@ -509,6 +580,12 @@ export function createBearParticles(
       const q = bouquetIndex[i];
       bouquetHome.set([bouquet.positions[q * 3], bouquet.positions[q * 3 + 1], bouquet.positions[q * 3 + 2], bouquetEdge[q]], i * 4);
       bouquetColors.set([bouquet.colors[q * 3], bouquet.colors[q * 3 + 1], bouquet.colors[q * 3 + 2]], i * 3);
+      const k = ringIndex[i];
+      ringHome.set([ringBox.positions[k * 3], ringBox.positions[k * 3 + 1], ringBox.positions[k * 3 + 2], ringBox.part[k]], i * 4);
+      ringHidden.set([ringBox.closed[k * 3], ringBox.closed[k * 3 + 1], ringBox.closed[k * 3 + 2], 0], i * 4);
+      ringColors.set([ringBox.colors[k * 3], ringBox.colors[k * 3 + 1], ringBox.colors[k * 3 + 2]], i * 3);
+      ringParts[i] = ringBox.part[k];
+      ringSizes[i] = ringBox.sizes[k];
     }
     const inHeart = real ? bear.heart[i] : 0;
     // A stream over about half a second; the bear's heart goes up last. Spare texels never launch.
@@ -526,6 +603,7 @@ export function createBearParticles(
       colors.set(color, i * 3);
       heartColors.set(color, i * 3);
       bouquetColors.set(color, i * 3);
+      ringColors.set(color, i * 3);
       confettiFlags[i] = 1;
     }
     if (real || paper) {
@@ -543,6 +621,8 @@ export function createBearParticles(
     tBear: dataTexture(bearHome),
     tHeart: dataTexture(heartHome),
     tBouquet: dataTexture(bouquetHome),
+    tRingBox: dataTexture(ringHome),
+    tRingHidden: dataTexture(ringHidden),
     tInfo: dataTexture(info),
     tLaunch: dataTexture(launch),
   };
@@ -555,6 +635,9 @@ export function createBearParticles(
     uBouquetScale: { value: 1 },
     uBouquetOffset: { value: new Vector3() },
     uBeat: { value: 0 },
+    uRing: { value: 0 },
+    uLid: { value: 0 },
+    uRingScale: { value: 1 },
   });
 
   const positionVariable = gpgpu.addVariable("texturePosition", positionShader, gpgpu.createTexture());
@@ -597,6 +680,9 @@ export function createBearParticles(
   geometry.setAttribute("aColor", new BufferAttribute(colors, 3));
   geometry.setAttribute("aHeartColor", new BufferAttribute(heartColors, 3));
   geometry.setAttribute("aBouquetColor", new BufferAttribute(bouquetColors, 3));
+  geometry.setAttribute("aRingColor", new BufferAttribute(ringColors, 3));
+  geometry.setAttribute("aRingPart", new BufferAttribute(ringParts, 1));
+  geometry.setAttribute("aRingSize", new BufferAttribute(ringSizes, 1));
   geometry.setAttribute("aSize", new BufferAttribute(sizes, 1));
   geometry.setAttribute("aHeart", new BufferAttribute(inHeartFlags, 1));
   geometry.setAttribute("aSeed", new BufferAttribute(seeds, 1));
@@ -617,6 +703,8 @@ export function createBearParticles(
       uBloom: { value: 0 },
       uBouquetScale: { value: 1 },
       uBeat: { value: 0 },
+      uRing: { value: 0 },
+      uLid: { value: 0 },
     },
   });
   const halo = new ShaderMaterial({
@@ -662,6 +750,9 @@ export function createBearParticles(
         uniforms.uBouquetScale.value = input.bouquetScale;
         uniforms.uBouquetOffset.value.copy(input.bouquetOffset);
         uniforms.uBeat.value = input.beat;
+        uniforms.uRing.value = input.ring;
+        uniforms.uLid.value = input.lid;
+        uniforms.uRingScale.value = input.ringScale;
         uniforms.uRayOrigin.value.copy(input.rayOrigin);
         uniforms.uRayDir.value.copy(input.rayDir);
         uniforms.uPointerStrength.value = input.pointerStrength;
@@ -684,6 +775,8 @@ export function createBearParticles(
       material.uniforms.uBloom.value = input.bloom;
       material.uniforms.uBouquetScale.value = input.bouquetScale;
       material.uniforms.uBeat.value = input.beat;
+      material.uniforms.uRing.value = input.ring;
+      material.uniforms.uLid.value = input.lid;
     },
     dispose() {
       dispose();

@@ -11,4 +11,6 @@ export const anniversary = {
     right: "U",
     line: "Forever",
   },
+  // Asked as the ring box opens, after the photos
+  question: ["do you wanna make", "more memories with me?"],
 };

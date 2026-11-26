@@ -30,6 +30,8 @@ import { RAIL, buildFilmPath, depthLook, entryOffset, filmLayout, samplePath, ty
 interface FilmState {
   position: number;
   entrance: number;
+  /** 0 → 1: after the last photo, the whole film carries on up the path and out of sight */
+  leave: number;
   reduced: boolean;
 }
 
@@ -80,12 +82,12 @@ function Film({ photos, state }: Pick<Props, "photos" | "state">) {
   const dpr = useThree((s) => s.viewport.dpr);
   const group = useRef<Group>(null);
   const live = useRef(state);
-  const { position, entrance, reduced } = state;
+  const { position, entrance, leave, reduced } = state;
   // Every prop change is a new frame to draw
   useEffect(() => {
-    live.current = { position, entrance, reduced };
+    live.current = { position, entrance, leave, reduced };
     invalidate();
-  }, [position, entrance, reduced, invalidate]);
+  }, [position, entrance, leave, reduced, invalidate]);
 
   const layout = useMemo(() => filmLayout(size.width, size.height), [size.width, size.height]);
   const path = useMemo(
@@ -121,7 +123,7 @@ function Film({ photos, state }: Pick<Props, "photos" | "state">) {
     const placed = pieces.current;
     const current = live.current;
     const shift = entryOffset(current.entrance, current.reduced, path.entry / layout.length + 0.6);
-    const focus = current.position - shift;
+    const focus = current.position + leaveOffset(current.leave, path, layout) - shift;
     const first = Math.max(0, Math.floor(focus - path.exit / layout.length) - 2);
     const last = Math.min(photos.length - 1, Math.ceil(focus + path.entry / layout.length) + 2);
     for (const [index, piece] of placed) {
@@ -147,12 +149,20 @@ const cameraDistance = (height: number) => height / (2 * Math.tan((FOV * Math.PI
 
 const scratch = { p: [0, 0, 0] as Vec3, t: [0, 0, 0] as Vec3, c: [0, 0, 0] as Vec3 };
 
+/** How many frames further along the film has moved as it leaves: far enough that the last photo is past the exit */
+const leaveOffset = (leave: number, path: FilmPath, layout: FilmLayout) => {
+  const t = Math.min(1, Math.max(0, leave));
+  // Eases out of the photo in focus, then speeds away
+  return t * t * (path.exit / layout.length + 1.5);
+};
+
 // Lays every photo along the path, where the scroll has moved it to
-function layPieces(pieces: Iterable<Piece>, path: FilmPath, layout: FilmLayout, { position, entrance, reduced }: FilmState) {
+function layPieces(pieces: Iterable<Piece>, path: FilmPath, layout: FilmLayout, { position: focused, entrance, leave, reduced }: FilmState) {
   const L = layout.length;
+  const position = focused + (reduced ? 0 : leaveOffset(leave, path, layout));
   // Before it enters, the first photo waits at the far end of the path
   const shift = entryOffset(entrance, reduced, path.entry / L + 0.6);
-  const opacity = reduced ? Math.min(1, Math.max(0, entrance)) : 1;
+  const opacity = (reduced ? Math.min(1, Math.max(0, entrance)) : 1) * (reduced ? 1 - Math.min(1, leave) : 1);
   const half = layout.across / 2;
   const { p, t, c } = scratch;
 

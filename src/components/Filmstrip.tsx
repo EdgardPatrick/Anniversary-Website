@@ -14,10 +14,11 @@ function Unavailable({ onLost }: { onLost?: () => void }) {
   return null;
 }
 
-export function Filmstrip({ position, entrance, reduced }: { position: number; entrance: number; reduced: boolean }) {
+/** `leave`: 0 → 1 as the film rises away after the last photo, for the ending */
+export function Filmstrip({ position, entrance, leave = 0, reduced }: { position: number; entrance: number; leave?: number; reduced: boolean }) {
   const [flat, setFlat] = useState(() => !supportsWebGL());
   if (!memoryPhotos.length) return null;
-  const hidden = entrance <= 0;
+  const hidden = entrance <= 0 || leave >= 1;
   const index = Math.round(position);
   const photo = memoryPhotos[index];
   const focusOpacity = 1 - Math.min(1, Math.abs(position - index) * 2);
@@ -27,7 +28,7 @@ export function Filmstrip({ position, entrance, reduced }: { position: number; e
     <section className="memory-scene" aria-label="Photo memories" aria-hidden={hidden || undefined}>
       {flat ? (
         hidden ? null : 
-        <div className="film-flat" aria-hidden="true" style={{ opacity: entrance * focusOpacity }}>
+        <div className="film-flat" aria-hidden="true" style={{ opacity: entrance * focusOpacity * (1 - leave) }}>
           {photo.src ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={photo.src} alt="" />
@@ -37,7 +38,7 @@ export function Filmstrip({ position, entrance, reduced }: { position: number; e
         </div>
       ) : (
         <div aria-hidden="true" className="absolute inset-0" style={{ visibility: hidden ? "hidden" : undefined }}>
-          <FilmRibbon photos={memoryPhotos} state={{ position, entrance, reduced }} onLost={() => setFlat(true)} />
+          <FilmRibbon photos={memoryPhotos} state={{ position, entrance, leave, reduced }} onLost={() => setFlat(true)} />
         </div>
       )}
       {photo.alt && <p className="sr-only">{photo.alt}</p>}

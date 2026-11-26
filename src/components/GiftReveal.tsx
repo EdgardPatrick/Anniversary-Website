@@ -16,17 +16,20 @@ import {
   walls,
   type Point,
 } from "@/lib/gift-box";
-import { framing, type ScreenPoint } from "@/lib/bear-scene";
+import { framing, ringBoxFrame, type ScreenPoint } from "@/lib/bear-scene";
 import type { BearStageHandle } from "@/components/BearStage";
 import type { StillShape } from "@/lib/bear-still";
 import { supportsWebGL } from "@/lib/webgl";
 import { listenForPhotoGestures } from "@/lib/photo-navigation";
 import { isReducedMotion } from "@/lib/motion";
 import { reveal } from "@/lib/reveal";
-import { FLIP, TRACK_SCREENS, beats, lineState, particleStory, trackProgress, type Beat } from "@/lib/story";
+import { FLIP, TRACK_SCREENS, advanceEnding, beats, bloomAt, endingStory, lineState, particleStory, trackProgress, type Beat } from "@/lib/story";
 import { useReducedMotion, useRevealStage } from "@/lib/use-preferences";
+import { HAND_BACK_SECONDS, MUSIC_RATE, OPEN_AT, autoplayAt, autoplaySchedule, photoAfterHandBack } from "@/lib/autoplay";
 
-const { greeting, finale } = anniversary;
+const MUSIC = "/anniversary.m4a";
+
+const { greeting, finale, question } = anniversary;
 
 // The live particles (React Three Fiber). Their code loads only when prepare() mounts them;
 // if the chunk can't load, the stage reports "no WebGL" and the still bear is drawn instead.
@@ -42,7 +45,7 @@ const BearStage = dynamic(
 );
 
 type Renderer = "pending" | "webgl" | "still";
-type LineKey = "greeting" | "i" | "u" | "forever";
+type LineKey = "greeting" | "i" | "u" | "forever" | "question";
 
 const lineBeats: Record<LineKey, Beat> = beats;
 const lineKeys = Object.keys(lineBeats) as LineKey[];
@@ -50,13 +53,15 @@ const lineKeys = Object.keys(lineBeats) as LineKey[];
 // The opening screen is the gift box alone. Opening it throws glitter and paper confetti up out of
 // the box; the glitter falls into the bear and the greeting appears under it as the confetti passes.
 // Scrolling flips the bouquet into the heart of "I ♥ U · Forever", then turns the heart
-// into the bear holding a heart.
+// into the bear holding a heart. After the last photo, one more flick sends the film away and the
+// bear back to the middle, where it becomes a ring box that opens as the question appears.
 // Every scroll beat follows the scroll position, both ways.
 export function GiftReveal() {
   const stage = useRevealStage();
   const reduced = useReducedMotion();
-  const [film, setFilm] = useState({ position: 0, entrance: 0, reduced: false });
+  const [film, setFilm] = useState({ position: 0, entrance: 0, leave: 0, reduced: false });
   const photoIndex = useRef(0);
+  const photoTouchedAt = useRef(-Infinity); // when the visitor last moved the photos themselves
   const heroRef = useRef<HTMLElement>(null);
   const stickyRef = useRef<HTMLDivElement>(null);
   const giftRef = useRef<HTMLButtonElement>(null);
@@ -148,10 +153,18 @@ export function GiftReveal() {
   const [loaded, setLoaded] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const total = memoryPhotos.filter(photo => photo.src).length + 3;
+  const total = memoryPhotos.filter(photo => photo.src).length + 4;
   const loading = loaded < total;
   const [landed, setLanded] = useState(false);
-  const intro = loading ? "loading" : landed ? "ready" : "arriving";
+  // Once everything has loaded, the loader waits on its Start button; the gift only falls in after it
+  const [started, setStarted] = useState(false);
+  // The ring box has opened and the question has been asked: offer to start over
+  const [finished, setFinished] = useState(false);
+  const intro = loading ? "loading" : !started ? "start" : landed ? "ready" : "arriving";
+  const music = useRef<HTMLAudioElement | null>(null);
+  const musicFailed = useRef(false);
+  const startedAt = useRef(-1);
+  const openGift = useRef<() => void>(() => { });
   const percent = Math.floor(100 * loaded / total);
 
   useEffect(() => {
@@ -188,8 +201,20 @@ export function GiftReveal() {
       progress();
     };
     const film = supportsWebGL() ? import("@/components/FilmRibbon") : Promise.resolve();
+    // The music: ready once it can play through. Phones may not buffer until it plays, so it never
+    // holds the loader for more than a few seconds; if it can't load, the show runs on its own clock.
+    const song = new Promise<void>((resolve) => {
+      const audio = (music.current ??= new Audio(MUSIC));
+      audio.preload = "auto";
+      if (audio.readyState >= 4) return resolve();
+      const done = () => resolve();
+      audio.addEventListener("canplaythrough", done, { once: true });
+      audio.addEventListener("error", () => { musicFailed.current = true; resolve(); }, { once: true });
+      window.setTimeout(done, 6000);
+      audio.load();
+    });
     void Promise.all([
-      particles(), film.then(progress), document.fonts.ready.then(progress),
+      particles(), film.then(progress), document.fonts.ready.then(progress), song.then(progress),
       ...Array.from({ length: Math.min(4, images.length) }, worker),
     ]).catch(() => {
       if (active) setLoadFailed(true);
@@ -215,6 +240,8 @@ export function GiftReveal() {
       const slot = (name: string) => sticky.querySelector<HTMLElement>(`[data-slot="${name}"]`)?.style;
       const words = slot("words");
       if (words) words.top = `${frame.bouquetCenter.y + frame.bouquetHalf + 14}px`;
+      const asked = slot("question");
+      if (asked) asked.top = `${ringBoxFrame(width, sticky.clientHeight).wordsTop}px`;
       if (renderer.current === "still" && stillShape.current) {
         const shape = stillShape.current;
         stillShape.current = null;
@@ -247,6 +274,9 @@ export function GiftReveal() {
     let photoPosition = photoIndex.current;
     let previousTime = 0;
     let lastFilmProgress = -1;
+    let ending = 0; // the ending's clock, 0 → 1 (see endingStory)
+    let lastLeave = -1;
+    let asked = false;
     const tick = (now: number) => {
       const hero = heroRef.current;
       if (hero) {
@@ -258,21 +288,34 @@ export function GiftReveal() {
         if (Math.abs(target - shown) < 0.0005) shown = target;
         // The greeting arrives on the clock, as the confetti falls past it, then leaves on the scroll
         const arrival = greetingAt.current < 0 ? 0 : reduced ? 1 : (now - greetingAt.current) / 900;
-        for (const key of lineKeys) applyLine(key, lineState(shown, lineBeats[key], key === "greeting" ? arrival : 1), now, reduced);
-        if (progress < 0.999) photoIndex.current = 0;
+        // One step past the last photo is the ending
+        const photoCount = memoryPhotos.length;
+        // Away from the strip, the film goes back to its first photo once it is out of sight (or at
+        // once from the ring box). The show's film starts gliding while it is still arriving.
+        if (progress < 0.999 && (photoIndex.current >= photoCount || bloomAt(shown) <= 0)) photoIndex.current = 0;
+        const focused = Math.min(photoIndex.current, photoCount - 1);
+        ending = advanceEnding(ending, photoIndex.current >= photoCount ? 1 : 0, previousTime ? Math.min(0.1, (now - previousTime) / 1000) : 0);
+        const end = endingStory(ending, reduced);
+        const arrivals: Partial<Record<LineKey, number>> = { greeting: arrival, question: end.question };
+        for (const key of lineKeys) applyLine(key, lineState(shown, lineBeats[key], arrivals[key] ?? 1), now, reduced);
+        if (end.question > 0 && !asked) setStatus(question.join(" "));
+        setFinished(ending >= 1);
+        asked = end.question > 0;
         const blend = reduced ? 1 : 1 - Math.exp(-(now - previousTime) / 105);
-        const next = photoPosition + (photoIndex.current - photoPosition) * blend;
-        const position = Math.abs(next - photoIndex.current) < 0.001 ? photoIndex.current : next;
+        const next = photoPosition + (focused - photoPosition) * blend;
+        const position = Math.abs(next - focused) < 0.001 ? focused : next;
         previousTime = now;
         const story = particleStory(shown, reduced);
-        if (lastFilmProgress !== shown || position !== photoPosition) {
+        if (lastFilmProgress !== shown || position !== photoPosition || lastLeave !== end.film) {
           photoPosition = position;
-          setFilm({ position, entrance: 1 - story.morph, reduced });
+          setFilm({ position, entrance: 1 - story.morph, leave: end.film, reduced });
           lastFilmProgress = shown;
+          lastLeave = end.film;
         }
         sceneRef.current?.setStory(story);
+        sceneRef.current?.setEnding(end);
         const { bloom, morph } = story;
-        if (renderer.current === "still") showStill(bloom > 0.5 ? "bouquet" : morph > 0.5 ? "heart" : "bear");
+        if (renderer.current === "still") showStill(end.ring > 0.5 ? "ringbox" : bloom > 0.5 ? "bouquet" : morph > 0.5 ? "heart" : "bear");
         if (cueRef.current) cueRef.current.style.opacity = String(Math.max(0, 1 - shown / 0.05));
       }
       frame = requestAnimationFrame(tick);
@@ -310,7 +353,8 @@ export function GiftReveal() {
     return listenForPhotoGestures(
       () => hero.getBoundingClientRect().bottom <= window.innerHeight + 1,
       photoIndex,
-      memoryPhotos.length,
+      memoryPhotos.length + 1, // the step past the last photo opens the ring box
+      () => { photoTouchedAt.current = performance.now(); },
     );
   }, [stage]);
 
@@ -537,6 +581,90 @@ export function GiftReveal() {
     );
   }
 
+  // Start: the music begins as the gift box falls in, and from here the whole show plays by itself
+  function start() {
+    if (started) return;
+    startedAt.current = performance.now();
+    const audio = music.current;
+    if (audio && !musicFailed.current) {
+      audio.currentTime = 0;
+      audio.playbackRate = MUSIC_RATE;
+      audio.preservesPitch = true;
+      audio.play().catch(() => { musicFailed.current = true; });
+    } else musicFailed.current = true;
+    setStarted(true);
+  }
+
+  // Back up to the bouquet: the page scrolls smoothly to the top, and the story plays back in reverse
+  function goBackUp() {
+    const hero = heroRef.current;
+    if (!hero) return;
+    window.scrollTo({ top: hero.getBoundingClientRect().top + window.scrollY, behavior: "smooth" });
+  }
+
+  // The latest open(), for the show's clock to call
+  useEffect(() => { openGift.current = open; });
+
+  // The show follows the music's clock: open the gift 4 seconds in, then scroll through the story,
+  // then bring each photo forward in turn, and finally step on to the ring box
+  useEffect(() => {
+    if (!started) return;
+    const photos = memoryPhotos.length;
+    let invitedAt = -1;
+    let frame = 0;
+    // Where the show picks up again after the visitor has scrolled the photos themselves
+    let handBack: { photo: number; at: number } | null = null;
+    let handedBackAt = -Infinity;
+    let landed = false; // the scroll has reached the bottom, and the page is the visitor's again
+    const musicTime = () => {
+      const audio = music.current;
+      const playing = audio && !musicFailed.current && !audio.error && (audio.currentTime > 0 || !audio.paused);
+      return playing ? audio.currentTime : ((performance.now() - startedAt.current) / 1000) * MUSIC_RATE;
+    };
+    const tick = () => {
+      const time = musicTime();
+      const stage = reveal.get();
+      if (stage === "closed" && time >= OPEN_AT) openGift.current();
+      if (stage === "open") {
+        if (invitedAt < 0) invitedAt = time;
+        const duration = musicFailed.current ? NaN : music.current?.duration ?? NaN;
+        const schedule = autoplaySchedule(invitedAt, photos, duration);
+        const show = autoplayAt(time, schedule, photos);
+        const hero = heroRef.current;
+        if (hero) {
+          const bounds = hero.getBoundingClientRect();
+          // Scrolled away from the photos after the show let go (by hand, or "Go back up"): the show is over
+          if (landed && bounds.bottom > window.innerHeight + 2) return;
+          if (!landed) {
+            const length = hero.offsetHeight - window.innerHeight;
+            const y = Math.round(bounds.top + window.scrollY + show.scroll * length);
+            if (Math.abs(window.scrollY - y) >= 1) window.scrollTo({ top: y, behavior: "instant" });
+            landed = show.scroll >= 1;
+          }
+          // The film: gliding from just before the scroll lands
+          if (time >= schedule.photosFrom) {
+            const touched = photoTouchedAt.current;
+            if (performance.now() - touched < HAND_BACK_SECONDS * 1000) {
+              // The visitor is scrolling the photos: theirs to move until they leave it alone
+            } else {
+              if (touched > handedBackAt) {
+                handedBackAt = touched;
+                handBack = { photo: photoIndex.current, at: time };
+              }
+              photoIndex.current = handBack ? photoAfterHandBack(time, schedule, photos, handBack) : show.photo;
+            }
+          }
+        }
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [started]);
+
+  // Stop the music if the page goes away
+  useEffect(() => () => music.current?.pause(), []);
+
   const opened = stage !== "closed";
   const invited = stage === "open";
 
@@ -551,13 +679,20 @@ export function GiftReveal() {
       {intro !== "ready" && (
         <div className="gift-loader">
           <div className="gift-loader-panel">
-            <p role="status" className="gift-loader-title">{loadFailed ? "Your gift couldn’t finish loading." : "Preparing your gift…"}</p>
+            <p role="status" className="gift-loader-title">{loadFailed ? "Your gift couldn’t finish loading." : loading ? "Preparing your gift…" : "Your gift is ready."}</p>
             {loadFailed ? (
               <button className="rounded-ui border border-accent px-6 py-3 text-xl" onClick={() => {
                 setLoadFailed(false);
                 setLoaded(0);
                 setAttempt(value => value + 1);
               }}>Try again</button>
+            ) : !loading ? (
+              <>
+                <button type="button" className="gift-start" onClick={start} disabled={started}>
+                  Start
+                </button>
+                <p className="gift-start-note">Do not touch anything after starting</p>
+              </>
             ) : (
               <>
                 <div className="gift-loader-track" role="progressbar" aria-label="Gift loading progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
@@ -618,6 +753,16 @@ export function GiftReveal() {
             <span data-line="u" aria-hidden="true" className="block font-serif heart-letter leading-none text-foreground" style={hiddenLine("left center")}>
               {finale.right}
             </span>
+          </div>
+          <div data-slot="question" className="absolute inset-x-4 text-center" style={{ top: "75%" }}>
+            <p data-line="question" className="text-[clamp(1.9rem,min(5.4vw,7svh),4.2rem)] font-bold leading-[0.95] tracking-[-0.04em]" style={hiddenLine("center top")}>
+              <span className="block">{question[0]}</span> <span className="title-accent block text-accent">{question[1]}</span>
+            </p>
+            {finished && (
+              <button type="button" className="gift-start pointer-events-auto mt-[clamp(1.25rem,4svh,2.5rem)]" onClick={goBackUp}>
+                Go back up
+              </button>
+            )}
           </div>
           <div data-slot="under" className="heart-word-position">
             <span data-line="forever" aria-hidden="true" className="inline-block font-serif forever-word font-semibold leading-none italic text-accent" style={hiddenLine("center top")}>

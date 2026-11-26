@@ -12,8 +12,9 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Group, PerspectiveCamera, Raycaster, Vector2, Vector3 } from "three";
 import { buildBearCloud, buildHeartCloud, pointBudget } from "@/lib/bear-points";
 import { buildBouquetCloud } from "@/lib/bouquet-points";
+import { buildRingBoxCloud } from "@/lib/ring-box-points";
 import { createBearParticles, type BearParticles as Simulation } from "@/lib/bear-particles";
-import { FOV, finalePose, framing, pulseAt, type ScreenPoint } from "@/lib/bear-scene";
+import { FOV, finalePose, framing, pulseAt, ringBoxFrame, type ScreenPoint } from "@/lib/bear-scene";
 
 export interface BearStageHandle {
   /** Throws the particles and confetti up from `from` (stage pixels, inside the box); `still` shows the finished bear at once */
@@ -23,6 +24,11 @@ export interface BearStageHandle {
    * changes from bear to heart and from heart to bouquet (0 → 1 each)
    */
   setStory(story: { turn: number; flip: number; morph: number; bloom: number }): void;
+  /**
+   * The ending, after the photos (0 → 1 each): the bear back in the middle, the bear becoming the
+   * ring box, and the box's lid opening
+   */
+  setEnding(ending: { center: number; ring: number; lid: number }): void;
   /** The pointer or finger over the stage, in stage pixels, or null once it has left */
   point(x: number | null, y?: number): void;
   /** Held down (mouse button or finger): a wider, stronger stir */
@@ -87,6 +93,9 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
     bloom: 1,
     turn: 0,
     flip: 0,
+    center: 0,
+    ring: 0,
+    lid: 0,
     pointer: { active: false, ndc: new Vector2(9, 9), fresh: true, velocity: new Vector3(), previous: new Vector3(), strength: 0, press: 0, down: false },
     tap: { ndc: new Vector2(9, 9), strength: 0 },
   });
@@ -95,7 +104,7 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
     const state = live.current;
     const coarse = window.matchMedia("(pointer: coarse)").matches;
     const count = pointBudget({ width: window.innerWidth, height: window.innerHeight, coarse });
-    const sim = createBearParticles(gl, buildBearCloud({ count }), buildHeartCloud({ count }), buildBouquetCloud({ count }), coarse ? 450 : 900);
+    const sim = createBearParticles(gl, buildBearCloud({ count }), buildHeartCloud({ count }), buildBouquetCloud({ count }), buildRingBoxCloud({ count }), coarse ? 450 : 900);
     const holder = group.current;
     if (!sim || !holder) {
       onReady(null);
@@ -143,6 +152,13 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
         state.bloom = bloom;
         if (state.still) invalidate();
       },
+      setEnding({ center, ring, lid }) {
+        if (state.center === center && state.ring === ring && state.lid === lid) return;
+        state.center = center;
+        state.ring = ring;
+        state.lid = lid;
+        if (state.still) invalidate();
+      },
       point(x, y = 0) {
         if (x === null) {
           state.pointer.active = false;
@@ -187,18 +203,21 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
     camera.position.set(0, 0, frame.distance);
     camera.lookAt(0, 0, 0);
     camera.updateProjectionMatrix();
+    const seconds = s.startTime < 0 ? -1 : (performance.now() - s.startTime) / 1000;
     const toWorld = ({ x, y }: ScreenPoint, target: Vector3) => target.set((x - width / 2) / frame.unit, (height / 2 - y) / frame.unit, 0);
     toWorld(frame.center, bear.position);
     // Pixels across the drawing buffer per world unit at distance 1: point sizes are in world units
     sim.material.uniforms.uPointScale.value = (height * state.gl.getPixelRatio()) / (2 * Math.tan((FOV * Math.PI) / 360));
 
-    const seconds = s.startTime < 0 ? -1 : (performance.now() - s.startTime) / 1000;
-    // The shape itself only moves with the scroll; its particles never stop
-    const finale = 1 - s.morph;
+    // The shape itself only moves with the scroll (and, after the photos, the ending's clock); its
+    // particles never stop
+    const finale = (1 - s.morph) * (1 - s.center);
     const pose = finalePose(width, height, frame.unit);
     camera.setViewOffset(width, height, -(pose.x - frame.center.x) * finale, -(pose.y - frame.center.y) * finale, width, height);
     bear.scale.setScalar(1 + (pose.scale - 1) * finale);
-    bear.rotation.set(s.flip + pose.pitch * finale, s.turn + pose.yaw * finale, 0);
+    // The ring box sways gently from side to side, so it reads as a solid
+    const sway = s.still || seconds < 0 ? 0 : 0.16 * Math.sin(seconds * 0.55) * s.ring;
+    bear.rotation.set(s.flip + pose.pitch * finale, s.turn + pose.yaw * finale + sway, 0);
     bear.updateMatrixWorld();
     if (seconds < 0) return;
 
@@ -238,6 +257,9 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
       bloom: s.bloom,
       bouquetScale: frame.bouquetHalf / frame.unit,
       bouquetOffset: v.bouquet.set(0, (frame.center.y - frame.bouquetCenter.y) / frame.unit, 0),
+      ring: s.ring,
+      lid: s.lid,
+      ringScale: ringBoxFrame(width, height).scale,
       beat: s.still ? 0 : pulseAt(seconds - ASSEMBLED),
       rayOrigin: v.rayOrigin,
       rayDir: v.rayDir,

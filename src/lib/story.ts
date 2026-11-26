@@ -25,6 +25,8 @@ export const beats = {
   i: heartWords,
   u: heartWords,
   forever: heartWords,
+  // Arrives on the ending's clock as the ring box opens (see endingStory), and stays
+  question: { enter: -Infinity, exit: Infinity },
 } satisfies Record<string, Beat>;
 
 /** Share of the track a line spends rippling in, and again rippling out */
@@ -74,4 +76,38 @@ export function particleStory(progress: number, reducedMotion: boolean) {
 export function trackProgress(top: number, height: number, viewport: number) {
   const length = height - viewport;
   return length > 0 ? clamp01(-top / length) : 0;
+}
+
+/**
+ * The ending, after the last photo. It plays on a clock rather than the scroll (one more flick
+ * past the last photo starts it, a flick back reverses it), over ENDING_SECONDS:
+ * the film rises away, the bear walks back to the middle and becomes a closed ring box, the box
+ * holds still for a breath, then the lid lifts, the ring rises, and the question arrives as it does.
+ */
+export const ENDING_SECONDS = 5.6;
+const FILM_LEAVES = { from: 0, to: 0.3 };
+const BEAR_CENTERS = { from: 0.06, to: 0.4 };
+const BECOMES_BOX = { from: 0.12, to: 0.5 };
+const LID_OPENS = { from: 0.6, to: 0.9 };
+/** The question starts to arrive a moment after the lid starts to lift, and takes about as long as the greeting */
+const QUESTION = { from: 0.65, to: 0.81 };
+
+export function endingStory(ending: number, reducedMotion: boolean) {
+  if (reducedMotion) {
+    const shown = ending > 0 ? 1 : 0;
+    return { film: shown, center: shown, ring: shown, lid: shown, question: shown };
+  }
+  return {
+    film: span(ending, FILM_LEAVES),
+    center: span(ending, BEAR_CENTERS),
+    ring: span(ending, BECOMES_BOX),
+    lid: span(ending, LID_OPENS),
+    question: clamp01((ending - QUESTION.from) / (QUESTION.to - QUESTION.from)),
+  };
+}
+
+/** Moves the ending's clock `seconds` toward where it is headed: forward to 1, or back, twice as fast, to 0 */
+export function advanceEnding(ending: number, headed: 0 | 1, seconds: number) {
+  const step = (seconds / ENDING_SECONDS) * (headed ? 1 : 2);
+  return headed ? Math.min(1, ending + step) : Math.max(0, ending - step);
 }

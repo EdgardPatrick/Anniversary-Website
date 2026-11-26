@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BLOOM, FLIP, MORPH, TURN, beats, bloomAt, flipAt, lineState, morphAt, particleStory, trackProgress, turnAt } from "@/lib/story";
+import { BLOOM, FLIP, MORPH, TURN, advanceEnding, beats, endingStory, bloomAt, flipAt, lineState, morphAt, particleStory, trackProgress, turnAt } from "@/lib/story";
 import { buildBouquetCloud } from "@/lib/bouquet-points";
 import { framing, pulseAt } from "@/lib/bear-scene";
 import { buildHeartCloud } from "@/lib/bear-points";
@@ -151,5 +151,23 @@ describe("final heart cloud", () => {
       expect(heart.colors[i * 3 + 2]).toBeGreaterThanOrEqual(heart.colors[i * 3 + 1]);
       expect(heart.colors[i * 3 + 2]).toBeGreaterThanOrEqual(heart.colors[i * 3]);
     }
+  });
+});
+
+describe("ending", () => {
+  it("leaves the film, centers the bear, closes the box, then opens it with the question", () => {
+    expect(endingStory(0, false)).toEqual({ film: 0, center: 0, ring: 0, lid: 0, question: 0 });
+    const closed = endingStory(0.55, false);
+    expect(closed.ring).toBe(1);
+    expect(closed.lid).toBe(0);
+    expect(closed.question).toBe(0);
+    const opening = endingStory(0.7, false);
+    expect(opening.lid).toBeGreaterThan(0);
+    expect(opening.lid).toBeLessThan(1);
+    expect(opening.question).toBeGreaterThan(0);
+    expect(endingStory(1, false)).toEqual({ film: 1, center: 1, ring: 1, lid: 1, question: 1 });
+    expect(endingStory(0.01, true).lid).toBe(1);
+    expect(advanceEnding(0.99, 1, 1)).toBe(1);
+    expect(advanceEnding(0.01, 0, 1)).toBe(0);
   });
 });

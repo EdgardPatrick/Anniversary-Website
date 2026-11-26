@@ -3,19 +3,42 @@
 
 import { buildBearCloud, buildHeartCloud } from "@/lib/bear-points";
 import { buildBouquetCloud } from "@/lib/bouquet-points";
-import { finalePose, framing } from "@/lib/bear-scene";
+import { RING_BOX_CENTER, RING_BOX_OPEN_ANGLE, RING_BOX_VIEW, RING_PART, buildRingBoxCloud, openLid } from "@/lib/ring-box-points";
+import { finalePose, framing, ringBoxFrame } from "@/lib/bear-scene";
 
 const COUNT = 9000;
-export type StillShape = "bear" | "heart" | "bouquet";
+export type StillShape = "bear" | "heart" | "bouquet" | "ringbox";
 
 let clouds: {
   bear: ReturnType<typeof buildBearCloud>;
   heart: ReturnType<typeof buildHeartCloud>;
   bouquet: ReturnType<typeof buildBouquetCloud>;
+  ringbox: { positions: Float32Array; colors: Float32Array };
 } | null = null;
 
+/** The ring box as it stands open, seen from a little above and to the side, as the live one ends */
+function openRingBox() {
+  const box = buildRingBoxCloud({ count: COUNT });
+  const positions = new Float32Array(COUNT * 3);
+  const [cp, sp] = [Math.cos(RING_BOX_VIEW.pitch), Math.sin(RING_BOX_VIEW.pitch)];
+  const [cy, sy] = [Math.cos(RING_BOX_VIEW.yaw), Math.sin(RING_BOX_VIEW.yaw)];
+  for (let i = 0; i < COUNT; i++) {
+    const rest: [number, number, number] = [box.positions[i * 3], box.positions[i * 3 + 1], box.positions[i * 3 + 2]];
+    let [x, y, z] = box.part[i] === RING_PART.lid ? openLid(rest, RING_BOX_OPEN_ANGLE) : rest;
+    [y, z] = [y * cp - z * sp, y * sp + z * cp];
+    [x, z] = [x * cy + z * sy, -x * sy + z * cy];
+    positions.set([x + RING_BOX_CENTER[0], y + RING_BOX_CENTER[1], z + RING_BOX_CENTER[2]], i * 3);
+  }
+  return { positions, colors: box.colors };
+}
+
 export function prepareStillClouds() {
-  clouds ??= { bear: buildBearCloud({ count: COUNT }), heart: buildHeartCloud({ count: COUNT }), bouquet: buildBouquetCloud({ count: COUNT }) };
+  clouds ??= {
+    bear: buildBearCloud({ count: COUNT }),
+    heart: buildHeartCloud({ count: COUNT }),
+    bouquet: buildBouquetCloud({ count: COUNT }),
+    ringbox: openRingBox(),
+  };
   return clouds;
 }
 
@@ -36,7 +59,8 @@ export function drawBearStill(canvas: HTMLCanvasElement, shape: StillShape) {
   const pose = finalePose(width, height, frame.unit);
   const yaw = shape === "bear" ? pose.yaw : 0;
   const pitch = shape === "bear" ? pose.pitch : 0;
-  const scale = shape === "heart" ? frame.heartHalf / frame.unit : shape === "bouquet" ? frame.bouquetHalf / frame.unit : pose.scale;
+  const scale =
+    shape === "heart" ? frame.heartHalf / frame.unit : shape === "bouquet" ? frame.bouquetHalf / frame.unit : shape === "ringbox" ? ringBoxFrame(width, height).scale : pose.scale;
   const center = shape === "bouquet" ? frame.bouquetCenter : frame.center;
   const camera = frame.distance;
 

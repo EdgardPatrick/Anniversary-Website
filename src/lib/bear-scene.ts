@@ -57,3 +57,26 @@ export function finalePose(width: number, height: number, unit: number) {
   const projectedWidth = BEAR_WIDTH * unit * scale;
   return { x: width - projectedWidth * 0.3, y: height * 0.42, scale, yaw: -Math.PI / 4, pitch: 0 };
 }
+
+/**
+ * How far the ring box reaches from its center, in its own units (lid open): up, down, and to
+ * either side. lib/ring-box-points.ts builds it to fit.
+ */
+export const RING_BOX_EXTENT = { top: 1.9, bottom: 1.6, half: 1.4 };
+
+/**
+ * The ring box after the photos: centered where the bear first stood, as large as fits with room
+ * above and the question below it. `scale` is against the bear's own size; `wordsTop` is where
+ * the question goes, in stage pixels.
+ */
+export function ringBoxFrame(width: number, height: number) {
+  const frame = framing(width, height);
+  const { unit, center } = frame;
+  const scale = Math.min(
+    1.1,
+    (center.y - height * 0.04) / (RING_BOX_EXTENT.top * unit),
+    (width * 0.45) / (RING_BOX_EXTENT.half * unit),
+    (height * 0.26) / (RING_BOX_EXTENT.bottom * unit),
+  );
+  return { scale, center, wordsTop: center.y + RING_BOX_EXTENT.bottom * unit * scale + 12 };
+}
