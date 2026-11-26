@@ -53,15 +53,15 @@
 .gift-start:active { transform: scale(.97); }
 .gift-start:focus-visible { outline: 2px solid #afd7ff; outline-offset: 4px; }
 .gift-start-note {
-  margin-top: 1.1rem;
+  margin-top: .6rem;
   color: #afd7ff;
   opacity: .8;
   font: 500 clamp(.78rem, 1.8vw, .95rem)/1.4 var(--font-mono), monospace;
-  animation: gift-start-in 520ms 120ms ease-out both;
+  animation: gift-start-in 520ms 220ms ease-out both;
 }
 .gift-start-plain {
   display: block;
-  margin: 1.4rem auto 0;
+  margin: 1.1rem auto 0;
   padding: .25rem .5rem;
   color: #d4e8ff;
   font-size: clamp(.95rem, 2.2vw, 1.1rem);
@@ -70,7 +70,7 @@
   text-decoration-thickness: 1px;
   cursor: pointer;
   transition: color 200ms ease-out;
-  animation: gift-start-in 520ms 220ms ease-out both;
+  animation: gift-start-in 520ms 120ms ease-out both;
 }
 .gift-start-plain:hover { color: #fff; text-decoration-thickness: 2px; }
 .gift-start-plain:focus-visible { outline: 2px solid #afd7ff; outline-offset: 4px; border-radius: 4px; }

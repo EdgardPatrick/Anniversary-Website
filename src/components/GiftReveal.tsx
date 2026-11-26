@@ -783,10 +783,10 @@ export function GiftReveal() {
                 <button type="button" className="gift-start" onClick={() => start()} disabled={started}>
                   Start
                 </button>
-                <p className="gift-start-note">Do not touch anything after starting</p>
                 <button type="button" className="gift-start-plain" onClick={() => start(false)} disabled={started}>
                   Continue without auto scroll
                 </button>
+                <p className="gift-start-note">Do not touch anything after starting</p>
               </>
             ) : (
               <>
