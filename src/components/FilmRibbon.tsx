@@ -23,6 +23,7 @@ import {
   SRGBColorSpace,
   ShaderMaterial,
 } from "three";
+import { loadPhoto } from "@/lib/load-photo";
 import type { MemoryPhoto } from "@/data/memory-photos";
 import { RAIL, buildFilmPath, depthLook, entryOffset, filmLayout, samplePath, type FilmLayout, type FilmPath, type Vec3 } from "@/lib/film-path";
 
@@ -92,19 +93,17 @@ function Film({ photos, state }: Pick<Props, "photos" | "state">) {
     [layout, size.width, size.height],
   );
 
-  const placed = useRef<Piece[]>([]);
+  const pieces = useRef(new Map<number, Piece>());
   useEffect(() => {
     const root = group.current;
-    if (!root) return;
-    const pieces = buildPieces(photos, layout, Math.min(dpr, 2), invalidate);
-    const meshes = pieces.map(piece => piece.mesh);
-    root.add(...meshes);
-    placed.current = pieces;
+    const placed = pieces.current;
     invalidate();
     return () => {
-      placed.current = [];
-      root.remove(...meshes);
-      pieces.forEach(piece => piece.dispose());
+      placed.forEach(piece => {
+        root?.remove(piece.mesh);
+        piece.dispose();
+      });
+      placed.clear();
     };
   }, [photos, layout, dpr, invalidate]);
 
@@ -117,7 +116,27 @@ function Film({ photos, state }: Pick<Props, "photos" | "state">) {
     camera.position.set(0, 0, cameraDistance(height));
     camera.lookAt(0, 0, 0);
     camera.updateProjectionMatrix();
-    layPieces(placed.current, path, layout, live.current);
+    const root = group.current;
+    if (!root) return;
+    const placed = pieces.current;
+    const current = live.current;
+    const shift = entryOffset(current.entrance, current.reduced, path.entry / layout.length + 0.6);
+    const focus = current.position - shift;
+    const first = Math.max(0, Math.floor(focus - path.exit / layout.length) - 2);
+    const last = Math.min(photos.length - 1, Math.ceil(focus + path.entry / layout.length) + 2);
+    for (const [index, piece] of placed) {
+      if (index >= first && index <= last) continue;
+      root.remove(piece.mesh);
+      piece.dispose();
+      placed.delete(index);
+    }
+    for (let index = first; index <= last; index++) {
+      if (placed.has(index)) continue;
+      const piece = buildPiece(photos[index], index, layout, Math.min(dpr, 2), invalidate);
+      root.add(piece.mesh);
+      placed.set(index, piece);
+    }
+    layPieces(placed.values(), path, layout, current);
   });
 
   return <group ref={group} />;
@@ -129,7 +148,7 @@ const cameraDistance = (height: number) => height / (2 * Math.tan((FOV * Math.PI
 const scratch = { p: [0, 0, 0] as Vec3, t: [0, 0, 0] as Vec3, c: [0, 0, 0] as Vec3 };
 
 // Lays every photo along the path, where the scroll has moved it to
-function layPieces(pieces: Piece[], path: FilmPath, layout: FilmLayout, { position, entrance, reduced }: FilmState) {
+function layPieces(pieces: Iterable<Piece>, path: FilmPath, layout: FilmLayout, { position, entrance, reduced }: FilmState) {
   const L = layout.length;
   // Before it enters, the first photo waits at the far end of the path
   const shift = entryOffset(entrance, reduced, path.entry / L + 0.6);
@@ -228,68 +247,66 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
-function buildPieces(photos: MemoryPhoto[], layout: FilmLayout, dpr: number, invalidate: () => void): Piece[] {
-  return photos.map((photo, index) => {
-    const art = drawFrame(layout, dpr, photo, index, invalidate);
-    const vertices = (SEGMENTS + 1) * 2;
-    const positions = new Float32Array(vertices * 3);
-    const tint = new Float32Array(vertices * 3);
-    const blur = new Float32Array(vertices);
-    const fade = new Float32Array(vertices);
-    const uvs = new Float32Array(vertices * 2);
-    const edge = new Float32Array(vertices);
-    const indices: number[] = [];
-    for (let i = 0; i <= SEGMENTS; i++) {
-      for (let j = 0; j < 2; j++) {
-        const k = (i * 2 + j) * 2;
-        const along = i / SEGMENTS;
-        edge[i * 2 + j] = j;
-        // The texture is drawn as the frame looks when it lies flat in focus
-        if (layout.vertical) {
-          uvs[k] = j;
-          uvs[k + 1] = 1 - along;
-        } else {
-          uvs[k] = along;
-          uvs[k + 1] = j;
-        }
-      }
-      if (i < SEGMENTS) {
-        const a = i * 2;
-        indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+function buildPiece(photo: MemoryPhoto, index: number, layout: FilmLayout, dpr: number, invalidate: () => void): Piece {
+  const art = drawFrame(layout, dpr, photo, index, invalidate);
+  const vertices = (SEGMENTS + 1) * 2;
+  const positions = new Float32Array(vertices * 3);
+  const tint = new Float32Array(vertices * 3);
+  const blur = new Float32Array(vertices);
+  const fade = new Float32Array(vertices);
+  const uvs = new Float32Array(vertices * 2);
+  const edge = new Float32Array(vertices);
+  const indices: number[] = [];
+  for (let i = 0; i <= SEGMENTS; i++) {
+    for (let j = 0; j < 2; j++) {
+      const k = (i * 2 + j) * 2;
+      const along = i / SEGMENTS;
+      edge[i * 2 + j] = j;
+      // The texture is drawn as the frame looks when it lies flat in focus
+      if (layout.vertical) {
+        uvs[k] = j;
+        uvs[k + 1] = 1 - along;
+      } else {
+        uvs[k] = along;
+        uvs[k + 1] = j;
       }
     }
-    const geometry = new BufferGeometry();
-    geometry.setAttribute("position", new BufferAttribute(positions, 3));
-    geometry.setAttribute("tint", new BufferAttribute(tint, 3));
-    geometry.setAttribute("blur", new BufferAttribute(blur, 1));
-    geometry.setAttribute("fade", new BufferAttribute(fade, 1));
-    geometry.setAttribute("uv", new BufferAttribute(uvs, 2));
-    geometry.setAttribute("edge", new BufferAttribute(edge, 1));
-    geometry.setIndex(indices);
-    const material = new ShaderMaterial({
-      uniforms: { map: { value: art.sharp }, softMap: { value: art.soft }, opacity: { value: 1 } },
-      vertexShader,
-      fragmentShader,
-      side: DoubleSide,
-      transparent: true,
-    });
-    const mesh = new Mesh(geometry, material);
-    mesh.frustumCulled = false;
-    return {
-      index,
-      mesh,
-      material,
-      positions,
-      tint,
-      blur,
-      fade,
-      dispose() {
-        geometry.dispose();
-        material.dispose();
-        art.dispose();
-      },
-    };
+    if (i < SEGMENTS) {
+      const a = i * 2;
+      indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+    }
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute("position", new BufferAttribute(positions, 3));
+  geometry.setAttribute("tint", new BufferAttribute(tint, 3));
+  geometry.setAttribute("blur", new BufferAttribute(blur, 1));
+  geometry.setAttribute("fade", new BufferAttribute(fade, 1));
+  geometry.setAttribute("uv", new BufferAttribute(uvs, 2));
+  geometry.setAttribute("edge", new BufferAttribute(edge, 1));
+  geometry.setIndex(indices);
+  const material = new ShaderMaterial({
+    uniforms: { map: { value: art.sharp }, softMap: { value: art.soft }, opacity: { value: 1 } },
+    vertexShader,
+    fragmentShader,
+    side: DoubleSide,
+    transparent: true,
   });
+  const mesh = new Mesh(geometry, material);
+  mesh.frustumCulled = false;
+  return {
+    index,
+    mesh,
+    material,
+    positions,
+    tint,
+    blur,
+    fade,
+    dispose() {
+      geometry.dispose();
+      material.dispose();
+      art.dispose();
+    },
+  };
 }
 
 // One frame of film, drawn flat: thin black rails with sprocket holes down both edges, the photo
@@ -366,14 +383,11 @@ function drawFrame(layout: FilmLayout, dpr: number, photo: MemoryPhoto, index: n
 
   paint(null);
   if (photo.src) {
-    const image = new Image();
-    image.decoding = "async";
-    image.onload = () => {
+    void loadPhoto(photo.src).then(image => {
       if (cancelled) return;
       paint(image);
       onLoad();
-    };
-    image.src = photo.src;
+    }, () => { /* Keep the numbered frame if this photo is unavailable. */ });
   }
   return {
     sharp,

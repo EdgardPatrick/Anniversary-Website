@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Filmstrip } from "@/components/Filmstrip";
+import { loadPhoto } from "@/lib/load-photo";
 import { memoryPhotos } from "@/data/memory-photos";
 import dynamic from "next/dynamic";
 import { GiftBox } from "@/components/GiftBox";
@@ -144,15 +145,63 @@ export function GiftReveal() {
     [prepare, stagePoint, showStill],
   );
 
+  const [loaded, setLoaded] = useState(0);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const total = memoryPhotos.filter(photo => photo.src).length + 3;
+  const loading = loaded < total;
+  const [landed, setLanded] = useState(false);
+  const intro = loading ? "loading" : landed ? "ready" : "arriving";
+  const percent = Math.floor(100 * loaded / total);
+
   useEffect(() => {
-    const idle = window.requestIdleCallback?.(() => void prepare(), { timeout: 600 }) ?? window.setTimeout(() => void prepare(), 200);
-    const pending = timers.current;
-    return () => {
-      if (window.cancelIdleCallback) window.cancelIdleCallback(idle);
-      else window.clearTimeout(idle);
-      pending.forEach((timer) => window.clearTimeout(timer));
+    if (intro !== "arriving") return;
+    let active = true;
+    const arrival = giftRef.current?.getAnimations().find(
+      animation => animation instanceof CSSAnimation && animation.animationName === "gift-arrival",
+    );
+    const finish = () => { if (active) setLanded(true); };
+    void Promise.resolve(arrival?.finished).then(finish, finish);
+    return () => { active = false; };
+  }, [intro]);
+
+
+  useEffect(() => {
+    let active = true;
+    let next = 0;
+    let completed = 0;
+    const progress = () => {
+      if (active) setLoaded(++completed);
     };
-  }, [prepare]);
+    const images = memoryPhotos.filter(photo => photo.src);
+    const worker = async () => {
+      while (active && next < images.length) {
+        await loadPhoto(images[next++].src);
+        progress();
+      }
+    };
+    const particles = async () => {
+      if (!(await prepare())) {
+        const { prepareStillClouds } = await import("@/lib/bear-still");
+        prepareStillClouds();
+      }
+      progress();
+    };
+    const film = supportsWebGL() ? import("@/components/FilmRibbon") : Promise.resolve();
+    void Promise.all([
+      particles(), film.then(progress), document.fonts.ready.then(progress),
+      ...Array.from({ length: Math.min(4, images.length) }, worker),
+    ]).catch(() => {
+      if (active) setLoadFailed(true);
+      active = false;
+    });
+    return () => { active = false; };
+  }, [attempt, prepare]);
+
+  useEffect(() => {
+    const pending = timers.current;
+    return () => pending.forEach(timer => window.clearTimeout(timer));
+  }, []);
 
   // Place the words around the bear and the heart, at every size
   useEffect(() => {
@@ -336,7 +385,7 @@ export function GiftReveal() {
   const later = (ms: number, run: () => void) => timers.current.push(window.setTimeout(run, ms));
 
   function open() {
-    if (!reveal.advance("opening")) return; // already opening: ignore repeated taps and key presses
+    if (intro !== "ready" || !reveal.advance("opening")) return; // already opening: ignore repeated taps and key presses
     const gift = giftRef.current;
     if (!gift) return;
     setStatus("Your gift is opening.");
@@ -493,14 +542,36 @@ export function GiftReveal() {
 
   return (
     <section
+      data-intro={intro}
       ref={heroRef}
       aria-labelledby="greeting-heading"
       className="relative"
       style={invited ? { height: `${TRACK_SCREENS * 100}svh` } : undefined}
     >
-      <div ref={stickyRef} className="hero sticky top-0 h-svh min-h-[30rem] overflow-hidden" style={{ touchAction: "pan-y pinch-zoom" }}>
+      {intro !== "ready" && (
+        <div className="gift-loader">
+          <div className="gift-loader-panel">
+            <p role="status" className="gift-loader-title">{loadFailed ? "Your gift couldn’t finish loading." : "Preparing your gift…"}</p>
+            {loadFailed ? (
+              <button className="rounded-ui border border-accent px-6 py-3 text-xl" onClick={() => {
+                setLoadFailed(false);
+                setLoaded(0);
+                setAttempt(value => value + 1);
+              }}>Try again</button>
+            ) : (
+              <>
+                <div className="gift-loader-track" role="progressbar" aria-label="Gift loading progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+                  <span className="gift-loader-fill" style={{ width: `${percent}%` }} />
+                </div>
+                <span aria-hidden="true" className="gift-loader-percent">{percent}%</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+      <div inert={intro !== "ready"} ref={stickyRef} className="hero sticky top-0 h-svh min-h-[30rem] overflow-hidden" style={{ touchAction: "pan-y pinch-zoom" }}>
         {/* Back walls and floor, behind the particles */}
-        <div aria-hidden="true" className="pointer-events-none absolute top-1/2 left-1/2 w-[min(84vw,36rem,calc(64svh*0.94))] -translate-x-1/2 -translate-y-1/2">
+        <div aria-hidden="true" className="gift-arrival-layer pointer-events-none absolute top-1/2 left-1/2 w-[min(84vw,36rem,calc(64svh*0.94))] -translate-x-1/2 -translate-y-1/2">
           <GiftBox layer="back" />
         </div>
         <div ref={layerRef} aria-hidden="true" className="bear-canvas pointer-events-none absolute inset-0">
@@ -509,6 +580,7 @@ export function GiftReveal() {
         </div>
 
         <button
+          disabled={intro !== "ready"}
           ref={giftRef}
           type="button"
           aria-label={opened ? "Your gift is open" : anniversary.giftLabel}
@@ -521,7 +593,7 @@ export function GiftReveal() {
           onPointerEnter={() => void prepare()}
           onFocus={() => void prepare()}
           onClick={open}
-          className="gift absolute top-1/2 left-1/2 w-[min(84vw,36rem,calc(64svh*0.94))] -translate-x-1/2 -translate-y-1/2 rounded-ui"
+          className="gift gift-arrival-layer absolute top-1/2 left-1/2 w-[min(84vw,36rem,calc(64svh*0.94))] -translate-x-1/2 -translate-y-1/2 rounded-ui"
         >
           <GiftBox layer="front" />
         </button>

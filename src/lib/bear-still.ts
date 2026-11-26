@@ -14,6 +14,11 @@ let clouds: {
   bouquet: ReturnType<typeof buildBouquetCloud>;
 } | null = null;
 
+export function prepareStillClouds() {
+  clouds ??= { bear: buildBearCloud({ count: COUNT }), heart: buildHeartCloud({ count: COUNT }), bouquet: buildBouquetCloud({ count: COUNT }) };
+  return clouds;
+}
+
 export function drawBearStill(canvas: HTMLCanvasElement, shape: StillShape) {
   const context = canvas.getContext("2d");
   if (!context) return false;
@@ -25,7 +30,7 @@ export function drawBearStill(canvas: HTMLCanvasElement, shape: StillShape) {
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.clearRect(0, 0, width, height);
 
-  clouds ??= { bear: buildBearCloud({ count: COUNT }), heart: buildHeartCloud({ count: COUNT }), bouquet: buildBouquetCloud({ count: COUNT }) };
+  const clouds = prepareStillClouds();
   const frame = framing(width, height);
   const { positions, colors } = clouds[shape];
   const pose = finalePose(width, height, frame.unit);

@@ -60,8 +60,8 @@ const homeChunk = /* glsl */ `
 
   vec3 homeOf(vec2 uv, vec4 info, float m, float b) {
     vec3 bear = texture2D(tBear, uv).xyz;
-    bear = mix(bear, uHeartCenter + (bear - uHeartCenter) * (1.0 + 0.1 * uBeat), info.z);
-    vec3 heart = texture2D(tHeart, uv).xyz * uHeartScale * (1.0 + 0.08 * uBeat * (1.0 - b));
+    bear = mix(bear, uHeartCenter + (bear - uHeartCenter) * (1.0 + 0.20 * uBeat), info.z);
+    vec3 heart = texture2D(tHeart, uv).xyz * uHeartScale * (1.0 + 0.24 * uBeat * (1.0 - b));
     vec3 bouquet = uBouquetOffset + texture2D(tBouquet, uv).xyz * uBouquetScale;
     return mix(mix(bear, heart, m), bouquet, b);
   }

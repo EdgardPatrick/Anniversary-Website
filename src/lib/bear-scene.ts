@@ -36,10 +36,11 @@ export function framing(width: number, height: number): Framing {
 }
 
 /** A heartbeat every few seconds: a quick swell, then a slower settle. 0 at rest, 1 at the peak. */
-export function pulseAt(seconds: number, period = 4.2) {
+export function pulseAt(seconds: number, period = 3) {
   if (seconds < 0) return 0;
   const t = (seconds % period) / 0.2;
-  return t * Math.exp(1 - t);
+  const swell = t * Math.exp(1 - t);
+  return swell * swell;
 }
 
 /**

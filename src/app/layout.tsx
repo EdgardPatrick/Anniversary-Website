@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import { motionScript } from "@/lib/motion";
 import { anniversary } from "@/data/anniversary";
 import "./globals.css";
+import "./gift-intro.css";
 
 // Self-hosted (assets/fonts/), so builds never need to reach Google Fonts.
 // Variable fonts: one file each covers every weight from 100 to 900.
