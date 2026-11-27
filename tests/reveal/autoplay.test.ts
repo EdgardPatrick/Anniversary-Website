@@ -1,7 +1,15 @@
 import { expect, it } from "vitest";
-import { OPEN_AT, SCROLL_SECONDS, autoplayAt, autoplaySchedule, musicLevel, photoAfterHandBack } from "@/lib/autoplay";
+import { OPEN_AT, SCROLL_SECONDS, autoplayAt, autoplaySchedule, musicLevel, photoAfterHandBack, scrollSecondsAt } from "@/lib/autoplay";
 
 const SONG = 579.92;
+
+it("continues manual scrolling from the same point in the reveal", () => {
+  for (const progress of [0, 0.05, 0.3, 0.95, 1]) {
+    const now = 10;
+    const plan = autoplaySchedule(now - scrollSecondsAt(progress), 116, SONG);
+    expect(autoplayAt(now, plan, 116).scroll).toBeCloseTo(progress);
+  }
+});
 
 it("opens the gift early, scrolls the story, glides through the photos without stopping, and ends on the ring box", () => {
   expect(OPEN_AT).toBe(9);

@@ -59,6 +59,11 @@ export function GiftBox({ layer }: { layer: "back" | "front" }) {
         </radialGradient>
       </defs>}
 
+      {!back && <g fill="none" stroke="#b6ddff" strokeWidth="2" strokeLinecap="round">
+        {["M68 152l-10 -7", "M65 169l-14 -1", "M72 186l-10 5",
+          "M252 152l10 -7", "M255 169l14 -1", "M248 186l10 5"].map(d =>
+          <path key={d} d={d} data-shake-line="" opacity="0" />)}
+      </g>}
       <g data-part="box" style={origin(160, 300)}>
         {/* A soft shadow on the "floor" */}
         {back && <ellipse cx={floorCenter[0]} cy={floorCenter[1] + 22} rx="118" ry="26" fill="#000" opacity=".5" />}

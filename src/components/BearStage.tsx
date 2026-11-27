@@ -44,7 +44,7 @@ interface Props {
   onLost: () => void;
 }
 
-const ASSEMBLED = 3.6; // seconds after the throw: the bear has formed and its heart starts beating
+const ASSEMBLED = 5; // seconds after the throw: the bear has formed and its heart starts beating
 
 export default function BearStage({ className, onReady, onLost }: Props) {
   const coarse = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
@@ -251,7 +251,7 @@ function BearParticles({ onReady }: Pick<Props, "onReady">) {
       delta: s.still ? 0 : delta,
       origin: bear.worldToLocal(toWorld(s.opening, v.origin)),
       apexY: topOfScreen - 0.15,
-      floorY: -height / 2 / frame.unit - bear.position.y - 0.4,
+      floorY: -height / 2 / frame.unit - bear.position.y - 1.8,
       morph: s.morph,
       heartScale: frame.heartHalf / frame.unit,
       bloom: s.bloom,

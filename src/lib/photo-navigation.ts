@@ -87,9 +87,15 @@ export function listenForPhotoGestures(atStrip: () => boolean, index: { current:
     settle(carry);
   }
 
+  function onPointerDown(event: PointerEvent) {
+    if (!atStrip() || index.current >= last || event.button !== 0) return;
+    if (event.target instanceof Element && event.target.closest("button")) return;
+    onInput?.();
+  }
+
   function onKey(event: KeyboardEvent) {
     if (!atStrip() || event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey) return;
-    if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable=true]")) return;
+    if (event.target instanceof Element && event.target.closest("button, input, textarea, select, [contenteditable=true]")) return;
     const direction = { ArrowDown: 1, PageDown: 1, ArrowUp: -1, PageUp: -1, " ": event.shiftKey ? -1 : 1 }[event.key];
     if (!direction || !captures(direction, false)) return;
     event.preventDefault();
@@ -98,6 +104,7 @@ export function listenForPhotoGestures(atStrip: () => boolean, index: { current:
     index.current = clamp(Math.round(index.current) + direction);
   }
 
+  window.addEventListener("pointerdown", onPointerDown);
   window.addEventListener("wheel", onWheel, { passive: false });
   window.addEventListener("touchstart", onTouchStart, { passive: true });
   window.addEventListener("touchmove", onTouchMove, { passive: false });
@@ -106,6 +113,7 @@ export function listenForPhotoGestures(atStrip: () => boolean, index: { current:
   window.addEventListener("keydown", onKey);
   return () => {
     clearTimeout(snapTimer);
+    window.removeEventListener("pointerdown", onPointerDown);
     window.removeEventListener("wheel", onWheel);
     window.removeEventListener("touchstart", onTouchStart);
     window.removeEventListener("touchmove", onTouchMove);

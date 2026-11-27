@@ -202,9 +202,9 @@ export const timeline = {
   burst: 1390, // the lid has cleared the box: the confetti goes up
   walls: 1900, // the glitter is up out of the box: the walls fall open (landing about 0.8 s later)
   boxFade: 3700, // the opened box has lain flat for about a second: it fades away under the bear
-  greeting: 3500, // the falling confetti passes the greeting's place: it appears under the bear
-  settled: 4900, // the glitter has fallen into the bear
-  invite: 6900, // after a moment alone with the bear, the page can scroll into the story
+  greeting: 4150, // the falling confetti passes the greeting's place: it appears under the bear
+  settled: 6400, // the glitter has fallen into the bear
+  invite: 8400, // after a moment alone with the bear, the page can scroll into the story
 } as const;
 
 // A spring, sampled into a CSS linear() easing, for the immediate "give" of the bow and the box,

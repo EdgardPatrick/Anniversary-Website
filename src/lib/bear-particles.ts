@@ -37,7 +37,7 @@ import { seededRandom, type BearCloud, type HeartCloud } from "@/lib/bear-points
 import type { BouquetCloud } from "@/lib/bouquet-points";
 import { RING_BOX_CENTER, RING_BOX_HINGE, RING_BOX_OPEN_ANGLE, RING_BOX_VIEW, type RingBoxCloud } from "@/lib/ring-box-points";
 
-const GRAVITY = 9;
+const GRAVITY = 6.5;
 
 // ── Shared by both simulation shaders: where a particle belongs right now ──
 const homeChunk = /* glsl */ `
@@ -160,7 +160,7 @@ const velocityShader = /* glsl */ `
       fall.xz += normalize(launch.xz + 0.0001) * 9.0 * exp(-pow((age - apexTime) / 0.3, 2.0));
       fall.x += sin(uTime * 5.0 + info.y * 40.0) * 5.0 * step(apexTime, age);
       vec3 drift = v.xyz + fall * uDelta;
-      if (age > apexTime) drift *= exp(-2.2 * uDelta);
+      if (age > apexTime) drift *= exp(-3.2 * uDelta);
       gl_FragColor = vec4(drift, 1.0);
       return;
     }
@@ -169,8 +169,8 @@ const velocityShader = /* glsl */ `
     float rb = ringOf(uv);
     vec3 home = homeOf(uv, info, m, b);
 
-    float caught = smoothstep(apexTime * 0.8, apexTime + 1.5, age);
     float seed = info.y;
+    float caught = smoothstep(apexTime + 0.12 + 0.24 * seed, apexTime + 2.4, age);
     // Particles along the outline move the most, so the silhouette shimmers and frays like Emotion's letter
     // ...scaled to the heart's size once it is the heart, so a small (phone) heart keeps its shape
     float edge = mix(texture2D(tBear, uv).w, texture2D(tHeart, uv).w * 0.6 * min(1.0, uHeartScale / 1.25), m);
@@ -189,8 +189,9 @@ const velocityShader = /* glsl */ `
     }
     vec3 acc = vec3(0.0, -${GRAVITY.toFixed(1)} * (1.0 - caught), 0.0);
     // Spread out around the top of the arc
-    float apex = exp(-pow((age - apexTime) / 0.28, 2.0));
-    acc.xz += normalize(launch.xz + 0.0001) * 7.0 * apex;
+    float apex = exp(-pow((age - apexTime) / 0.36, 2.0));
+    vec2 fan = normalize(launch.xz + 0.0001) * vec2(1.0, 0.45);
+    acc.xz += fan * mix(6.5, 10.5, seed) * apex;
 
     // The heart's rim (the bear's heart, then the final one) keeps drifting and swirling
     vec3 bearHome = texture2D(tBear, uv).xyz;
@@ -520,7 +521,8 @@ export function createBearParticles(
   ringBox: RingBoxCloud,
   confetti: number,
 ): BearParticles | null {
-  const total = bear.count + confetti;
+  const paperEnd = bear.count + confetti;
+  const total = paperEnd + Math.ceil(confetti * 0.8);
   const size = Math.ceil(Math.sqrt(total));
   const gpgpu = new GPUComputationRenderer(size, size, renderer);
   // Full float where the GPU can render to it, half float (most phones) otherwise
@@ -571,7 +573,7 @@ export function createBearParticles(
   let firstPaper = bear.count;
   for (let i = 0; i < texels; i++) {
     const real = i < bear.count;
-    const paper = !real && i < total;
+    const falling = !real && i < total;
     if (real) {
       const h = heartIndex[i];
       bearHome.set([bear.positions[i * 3], bear.positions[i * 3 + 1], bear.positions[i * 3 + 2], bearEdge[i]], i * 4);
@@ -589,24 +591,26 @@ export function createBearParticles(
     }
     const inHeart = real ? bear.heart[i] : 0;
     // A stream over about half a second; the bear's heart goes up last. Spare texels never launch.
-    const delay = real || paper ? random() * 0.55 + inHeart * 0.25 : 1e6;
+    const delay = real || falling ? random() * 0.55 + inHeart * 0.25 : 1e6;
     const seed = random();
     // Each aims for its own height near the top, so the top of the arc is a dome, not a flat band
-    info.set([delay, seed, inHeart, paper ? 0.7 + random() * 0.38 : 0.6 + random() * 0.4], i * 4);
+    info.set([delay, seed, inHeart, falling ? 0.7 + random() * 0.38 : 0.6 + random() * 0.4], i * 4);
     const angle = random() * Math.PI * 2;
-    const throwSpeed = paper ? 0.8 + random() * 1.6 : 0.3 + random() * 1.1;
+    const throwSpeed = falling ? 0.8 + random() * 1.6 : 0.45 + random() * 1.65;
     const yNorm = real ? (bear.positions[i * 3 + 1] + 1.62) / 3.25 : 0;
-    launch.set([Math.cos(angle) * throwSpeed, paper ? 1 : 0, Math.sin(angle) * throwSpeed * 0.7, 0.32 * random() + 0.18 * (1 - yNorm)], i * 4);
-    if (paper) {
+    launch.set([Math.cos(angle) * throwSpeed, falling ? 1 : 0, Math.sin(angle) * throwSpeed * 0.7, 0.32 * random() + 0.18 * (1 - yNorm)], i * 4);
+    if (falling) {
       if (delay < info[firstPaper * 4]) firstPaper = i;
       const color = CONFETTI_COLORS[Math.floor(random() * CONFETTI_COLORS.length)];
       colors.set(color, i * 3);
       heartColors.set(color, i * 3);
       bouquetColors.set(color, i * 3);
       ringColors.set(color, i * 3);
-      confettiFlags[i] = 1;
+      // Loose glitter uses the same flight as paper, drawn as small round beads.
+      confettiFlags[i] = i < paperEnd ? 1 : 0;
+      sizes[i] = 1.15 + seed * 0.85;
     }
-    if (real || paper) {
+    if (real || falling) {
       refs[i * 2] = ((i % size) + 0.5) / size;
       refs[i * 2 + 1] = (Math.floor(i / size) + 0.5) / size;
       seeds[i] = seed;

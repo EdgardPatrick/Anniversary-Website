@@ -96,3 +96,14 @@
   100% { transform: translateY(0); }
 }
 html[data-motion="reduce"] [data-intro="arriving"] .gift-arrival-layer { animation-delay: 0s; }
+.gift-start.gift-small {
+  min-height: 44px;
+  padding: .5rem 1.1rem;
+  font-size: clamp(.875rem, 1.6vw, 1rem);
+}
+.gift-continue {
+  position: absolute;
+  z-index: 5;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+}

@@ -10,14 +10,9 @@
 //
 // Times here are positions in the song, so they hold at any playback speed.
 
-/** The song's playback speed: as recorded */
-export const MUSIC_RATE = 1;
+/** The song's playback speed relative to the recording */
+export const MUSIC_RATE = 0.95;
 
-/**
- * If the visitor scrolls the photos themselves, the show lets them; once they have left it alone
- * this long (seconds), it carries on from the photo they stopped on
- */
-export const HAND_BACK_SECONDS = 5;
 /** Seconds into the music when the gift opens */
 export const OPEN_AT = 9;
 /** The song fades in over this long at its start, and out over this long before its end, each time round (music seconds) */
@@ -31,7 +26,7 @@ export function musicLevel(time: number, duration: number) {
   return Math.min(1, Math.max(0, Math.min(fadeIn, fadeOut)));
 }
 /** How long the slow scroll through the bouquet, heart and bear takes */
-export const SCROLL_SECONDS = 12;
+export const SCROLL_SECONDS = 18;
 /** The film starts gliding this long before the scroll lands, while it is still arriving, so it never stops */
 const GLIDE_LEAD = 1.5;
 /** The glide gathers speed over this long, so its start blends into the film's arrival */
@@ -78,6 +73,12 @@ export function autoplaySchedule(invitedAt: number, photos: number, duration: nu
 /** Eases in, then keeps going at a steady speed right to the bottom, so the film arrives still moving */
 const EASE_IN = 0.25;
 const ease = (t: number) => (t < EASE_IN ? (t * t) / (EASE_IN * (2 - EASE_IN)) : (2 * t - EASE_IN) / (2 - EASE_IN));
+
+/** Elapsed story time at the visitor's current eased scroll position. */
+export function scrollSecondsAt(progress: number) {
+  const scaled = progress * (2 - EASE_IN);
+  return SCROLL_SECONDS * (scaled < EASE_IN ? Math.sqrt(scaled * EASE_IN) : (scaled + EASE_IN) / 2);
+}
 
 /** The film's position at music time `time` when it set off from `photo` at music time `at` */
 const glide = (time: number, schedule: AutoplaySchedule, photos: number, photo: number, at: number) =>

@@ -16,7 +16,7 @@ export const FLIP = { from: 0.48, to: 0.79 };
 export const BLOOM = FLIP;
 
 // The first photo is centered at the end of the final transformation.
-export const TRACK_SCREENS = 1 + 4.6 * FLIP.to;
+export const TRACK_SCREENS = 1 + 6.4 * FLIP.to;
 
 const heartWords = { enter: TURN.from + (TURN.to - TURN.from) * 0.5, exit: FLIP.from };
 
